@@ -1,15 +1,16 @@
-CC = gcc
-CFLAGS = -Wall -Werror -Wpedantic -pthread
-BIN = sbar
+CFLAGS = -pthread -pedantic -g -Wall -Wextra -Wno-unused-parameter
 
-all: $(BIN)
+SRCS   = $(wildcard *.c)
+OBJS   = $(SRCS:.c=.o)
 
-$(BIN): $(OBJS)
-	$(CC) $(CFLAGS) $< -o $@
+.PHONY: all
+all:    sbar
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+sbar:   $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^
 
+# $(OBJS): foo.h bar.h
+
+.PHONY: clean
 clean:
-	$(RM) $(OBJS) $(BIN)
-
+	$(RM) $(OBJS) sbar core
