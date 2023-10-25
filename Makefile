@@ -1,4 +1,4 @@
-CFLAGS = -pthread -pedantic -g -Wall -Wextra -Wno-unused-parameter
+CFLAGS = -std=c17 -pthread -Og -g3 -Wall -Wextra -pedantic -Werror
 
 SRCS   = $(wildcard *.c)
 OBJS   = $(SRCS:.c=.o)
