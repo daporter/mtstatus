@@ -1,10 +1,10 @@
 /* TODO:
-   - Add asserts (see K&R ‘assert.h’; Seacord ch. 11).
    - Add handlers for SIGINT, etc., for clean shutdown.
    - Refactor error handling.
    - Handle async component update (via signal).
    - Add more component functions (see ‘syscalls(2) manpage’). */
 
+#include <assert.h>
 #include <inttypes.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -23,7 +23,7 @@ static void datetime(char *buf);
 /* A status bar component */
 struct component {
 	void (*update)(char *);
-	int sleep_secs;
+	unsigned sleep_secs;
 };
 
 /* The components that make up the status bar.
@@ -38,12 +38,9 @@ static const struct component components[] = {
 	{ datetime, 1 },
 };
 
-/* Text that indicates no value could be obtained */
-static const char unknown_str[] = "n/a";
-
 /* Argument passed to the thread routine */
 struct targ {
-	struct component sb_component;
+	struct component component;
 	unsigned posn;
 };
 
@@ -55,6 +52,11 @@ static char component_bufs[NCOMPONENTS][MAX_COMP_LEN];
 static pthread_mutex_t bufs_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool is_updated = false;
 static pthread_cond_t is_updated_cond = PTHREAD_COND_INITIALIZER;
+
+/* Text that indicates no value could be obtained */
+static const char unknown_str[] = "n/a";
+static_assert(sizeof(unknown_str) <= sizeof(component_bufs[0]),
+	      "unknown_str must be no bigger than component_buf");
 
 static void datetime(char *buf)
 {
@@ -79,6 +81,8 @@ static void datetime(char *buf)
 
 static void ram_free(char *buf)
 {
+	assert(buf != NULL);
+
 	const char meminfo[] = "/proc/meminfo";
 	FILE *fp;
 	char total_str[MAX_COMP_LEN], free_str[MAX_COMP_LEN];
@@ -120,13 +124,14 @@ static void ram_free(char *buf)
 static void *thread(void *arg)
 {
 	void (*update)(char *);
-	int nsecs, s;
+	unsigned nsecs;
 	unsigned posn;
+	int s;
 	char buf[MAX_COMP_LEN];
 
 	/* Unpack arg */
-	update = ((struct targ *)arg)->sb_component.update;
-	nsecs = ((struct targ *)arg)->sb_component.sleep_secs;
+	update = ((struct targ *)arg)->component.update;
+	nsecs = ((struct targ *)arg)->component.sleep_secs;
 	posn = ((struct targ *)arg)->posn;
 	free(arg);
 
@@ -140,7 +145,9 @@ static void *thread(void *arg)
 		s = pthread_mutex_lock(&bufs_mutex);
 		if (s != 0)
 			err_exit_en(s, "pthread_mutex_lock");
-		memcpy(component_bufs[posn], buf, MAX_COMP_LEN);
+		static_assert(sizeof(component_bufs[posn]) >= sizeof(buf),
+			      "component_buf must be at least as large as buf");
+		memcpy(component_bufs[posn], buf, sizeof buf);
 		is_updated = true;
 		s = pthread_mutex_unlock(&bufs_mutex);
 		if (s != 0)
@@ -174,7 +181,7 @@ int main(void)
 	/* Create the threads */
 	for (unsigned i = 0; i < NCOMPONENTS; i++) {
 		arg = malloc(sizeof *arg);
-		arg->sb_component = components[i];
+		arg->component = components[i];
 		arg->posn = i;
 
 		/* We assume the thread routine frees arg */
