@@ -1,8 +1,9 @@
 /* TODO:
-  - Refactor error handling.
-  - Handle async component update (via signal).
-  - Add more component functions (see ‘syscalls(2) manpage’).
-  - Add asserts (see K&R ‘assert.h’; Seacord ch. 11). */
+   - Add asserts (see K&R ‘assert.h’; Seacord ch. 11).
+   - Add handlers for SIGINT, etc., for clean shutdown.
+   - Refactor error handling.
+   - Handle async component update (via signal).
+   - Add more component functions (see ‘syscalls(2) manpage’). */
 
 #include <inttypes.h>
 #include <pthread.h>
@@ -20,17 +21,17 @@ static void ram_free(char *buf);
 static void datetime(char *buf);
 
 /* A status bar component */
-struct sb_component {
-	void (*func)(char *);
+struct component {
+	void (*update)(char *);
 	int sleep_secs;
 };
 
 /* The components that make up the status bar.
- 
+
    Each element consists of an updater function and a sleep interval (in
    seconds).  The order of the elements defines the order of components in the
    status bar. */
-static const struct sb_component components[] = {
+static const struct component components[] = {
 	/* function, sleep */
 	{ ram_free, 2 },
 	{ datetime, 2 },
@@ -42,15 +43,15 @@ static const char unknown_str[] = "n/a";
 
 /* Argument passed to the thread routine */
 struct targ {
-	struct sb_component sb_component;
+	struct component sb_component;
 	unsigned posn;
 };
 
-#define NCOMPONENTS  ((sizeof components) / (sizeof(struct sb_component)))
+#define NCOMPONENTS  ((sizeof components) / (sizeof(struct component)))
 #define MAX_COMP_LEN 128
 
 /* Each thread writes to its own output buffer */
-static char bufs[NCOMPONENTS][MAX_COMP_LEN];
+static char component_bufs[NCOMPONENTS][MAX_COMP_LEN];
 static pthread_mutex_t bufs_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool is_updated = false;
 static pthread_cond_t is_updated_cond = PTHREAD_COND_INITIALIZER;
@@ -78,7 +79,7 @@ static void datetime(char *buf)
 
 static void ram_free(char *buf)
 {
-	const char *meminfo = "/proc/meminfo";
+	const char meminfo[] = "/proc/meminfo";
 	FILE *fp;
 	char total_str[MAX_COMP_LEN], free_str[MAX_COMP_LEN];
 	uintmax_t free;
@@ -118,13 +119,13 @@ static void ram_free(char *buf)
 
 static void *thread(void *arg)
 {
-	void (*func)(char *);
+	void (*update)(char *);
 	int nsecs, s;
 	unsigned posn;
-	char output[MAX_COMP_LEN];
+	char buf[MAX_COMP_LEN];
 
 	/* Unpack arg */
-	func = ((struct targ *)arg)->sb_component.func;
+	update = ((struct targ *)arg)->sb_component.update;
 	nsecs = ((struct targ *)arg)->sb_component.sleep_secs;
 	posn = ((struct targ *)arg)->posn;
 	free(arg);
@@ -133,12 +134,13 @@ static void *thread(void *arg)
 	if (s != 0)
 		err_exit_en(s, "pthread_detach");
 
+	/* Component-update loop */
 	while (true) {
-		func(output);
+		update(buf);
 		s = pthread_mutex_lock(&bufs_mutex);
 		if (s != 0)
 			err_exit_en(s, "pthread_mutex_lock");
-		memcpy(bufs[posn], output, MAX_COMP_LEN);
+		memcpy(component_bufs[posn], buf, MAX_COMP_LEN);
 		is_updated = true;
 		s = pthread_mutex_unlock(&bufs_mutex);
 		if (s != 0)
@@ -154,13 +156,13 @@ static void *thread(void *arg)
 	return NULL;
 }
 
-static void print_bufs(void)
+static void print_component_bufs(void)
 {
 	unsigned i;
 
 	for (i = 0; i < NCOMPONENTS - 1; i++)
-		printf("%s  |  ", bufs[i]);
-	printf("%s\n", bufs[i]);
+		printf("%s  |  ", component_bufs[i]);
+	printf("%s\n", component_bufs[i]);
 }
 
 int main(void)
@@ -169,27 +171,29 @@ int main(void)
 	pthread_t tid;
 	int s;
 
+	/* Create the threads */
 	for (unsigned i = 0; i < NCOMPONENTS; i++) {
 		arg = malloc(sizeof *arg);
 		arg->sb_component = components[i];
 		arg->posn = i;
 
-		/* Assume the thread routine frees arg */
+		/* We assume the thread routine frees arg */
 		s = pthread_create(&tid, NULL, thread, arg);
 		if (s != 0)
 			err_exit_en(s, "pthread_create");
 	}
 
+	/* Print-status-bar loop */
 	while (true) {
 		s = pthread_mutex_lock(&bufs_mutex);
 		if (s != 0)
 			err_exit_en(s, "pthread_mutex_lock");
-		if (!is_updated) {
+		while (!is_updated) {
 			s = pthread_cond_wait(&is_updated_cond, &bufs_mutex);
 			if (s != 0)
 				err_exit_en(s, "pthread_cond_wait");
 		}
-		print_bufs();
+		print_component_bufs();
 		is_updated = false;
 		s = pthread_mutex_unlock(&bufs_mutex);
 		if (s != 0)
