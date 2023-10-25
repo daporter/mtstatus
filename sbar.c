@@ -1,3 +1,9 @@
+/* TODO:
+  - Refactor error handling.
+  - Handle async component update (via signal).
+  - Add more component functions (see ‘syscalls(2) manpage’).
+  - Add asserts (see K&R ‘assert.h’; Seacord ch. 11). */
+
 #include <inttypes.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -8,48 +14,33 @@
 #include <time.h>
 #include <unistd.h>
 
-/*
- * TODO:
- *   - check return values of all library functions and system calls
- *   - handle async component update (via signal)
- *   - add more component functions (see ‘syscalls(2) manpage’)
- *   - read about writing daemons in Kerrisk
- *   - add asserts (see K&R ‘assert.h’)
- */
+#include "errors.h"
 
 static void ram_free(char *buf);
-static void load_avg(char *buf);
 static void datetime(char *buf);
 
-/*
- * A status bar component.
- */
+/* A status bar component */
 struct sb_component {
 	void (*func)(char *);
 	int sleep_secs;
 };
 
-/*
- * The components that make up the status bar.
- *
- * The order of the elements defines the order of components as they appear in
- * the status bar.
- */
+/* The components that make up the status bar.
+ 
+   Each element consists of an updater function and a sleep interval (in
+   seconds).  The order of the elements defines the order of components in the
+   status bar. */
 static const struct sb_component components[] = {
 	/* function, sleep */
 	{ ram_free, 2 },
-	{ load_avg, 2 },
+	{ datetime, 2 },
 	{ datetime, 1 },
 };
 
-/*
- * Text that indicates no value could be retrieved.
- */
+/* Text that indicates no value could be obtained */
 static const char unknown_str[] = "n/a";
 
-/*
- * Argument passed to the thread routine.
- */
+/* Argument passed to the thread routine */
 struct targ {
 	struct sb_component sb_component;
 	unsigned posn;
@@ -71,97 +62,91 @@ static void datetime(char *buf)
 
 	t = time(NULL);
 	if (t == -1) {
-		perror("time");
+		err_msg("[datetime] Unable to obtain the current time");
 		if (snprintf(buf, MAX_COMP_LEN, "%s", unknown_str) < 0)
-			perror("snprintf");
+			err_exit("[datetime] snprintf");
 		return;
 	}
 	if (localtime_r(&t, &now) == NULL) {
-		perror("localtime_r");
+		err_msg("[datetime] Unable to determine local time");
 		if (snprintf(buf, MAX_COMP_LEN, "%s", unknown_str) < 0)
-			perror("snprintf");
+			err_exit("[datetime] snprintf");
 		return;
 	}
-	if (strftime(buf, MAX_COMP_LEN, "%T", &now) == 0)
-		if (snprintf(buf, MAX_COMP_LEN, "%s", unknown_str) < 0)
-			perror("snprintf");
-}
-
-static void load_avg(char *buf)
-{
-	double avgs[1];
-
-	if (getloadavg(avgs, 1) == -1) {
-		perror("getloadavg");
-		if (snprintf(buf, MAX_COMP_LEN, "%s", unknown_str) < 0)
-			perror("snprintf");
-		return;
-	}
-	if (snprintf(buf, MAX_COMP_LEN, "%.2f", avgs[0]) < 0)
-		perror("snprintf");
+	(void)strftime(buf, MAX_COMP_LEN, "%T", &now);
 }
 
 static void ram_free(char *buf)
 {
+	const char *meminfo = "/proc/meminfo";
 	FILE *fp;
 	char total_str[MAX_COMP_LEN], free_str[MAX_COMP_LEN];
 	uintmax_t free;
 
-	fp = fopen("/proc/meminfo", "r");
+	fp = fopen(meminfo, "r");
 	if (fp == NULL) {
-		perror("fopen");
+		err_msg("[ram_free] Unable to open %s", meminfo);
 		if (snprintf(buf, MAX_COMP_LEN, "%s", unknown_str) < 0)
-			perror("snprintf");
+			err_exit("[ram_free] snprintf");
 		return;
 	}
 	if (fscanf(fp,
 		   "MemTotal: %s kB\n"
 		   "MemFree: %s kB\n",
 		   total_str, free_str) == EOF) {
-		perror("fscanf");
+		err_msg("[ram_free] Unable to parse %s", meminfo);
 		if (snprintf(buf, MAX_COMP_LEN, "%s", unknown_str) < 0)
-			perror("snprintf");
+			err_exit("[ram_free] snprintf");
 		if (fclose(fp) == EOF)
-			perror("fclose");
+			err_exit("[ram_free] fclose");
 		return;
 	}
 	if (fclose(fp) == EOF)
-		perror("fclose");
+		err_exit("[ram_free] fclose");
 
 	free = strtoumax(free_str, NULL, 0);
 	if (free == 0) {
-		(void)fprintf(stderr, "ram_free: unable to read MemFree\n");
+		err_msg("[ram_free] Unable to parse %s", meminfo);
 		if (snprintf(buf, MAX_COMP_LEN, "%s", unknown_str) < 0)
-			perror("snprintf");
+			err_exit("[ram_free] snprintf");
 		return;
 	}
 
 	if (snprintf(buf, MAX_COMP_LEN, "%ju", free) < 0)
-		perror("snprintf");
+		err_exit("[ram_free] snprintf");
 }
 
 static void *thread(void *arg)
 {
 	void (*func)(char *);
-	int nsecs;
+	int nsecs, s;
 	unsigned posn;
 	char output[MAX_COMP_LEN];
 
-	/* Unpack arg. */
+	/* Unpack arg */
 	func = ((struct targ *)arg)->sb_component.func;
 	nsecs = ((struct targ *)arg)->sb_component.sleep_secs;
 	posn = ((struct targ *)arg)->posn;
 	free(arg);
 
-	pthread_detach(pthread_self());
+	s = pthread_detach(pthread_self());
+	if (s != 0)
+		err_exit_en(s, "pthread_detach");
 
 	while (true) {
 		func(output);
-		pthread_mutex_lock(&bufs_mutex);
+		s = pthread_mutex_lock(&bufs_mutex);
+		if (s != 0)
+			err_exit_en(s, "pthread_mutex_lock");
 		memcpy(bufs[posn], output, MAX_COMP_LEN);
 		is_updated = true;
-		pthread_mutex_unlock(&bufs_mutex);
-		pthread_cond_signal(&is_updated_cond);
+		s = pthread_mutex_unlock(&bufs_mutex);
+		if (s != 0)
+			err_exit_en(s, "pthread_mutex_unlock");
+
+		s = pthread_cond_signal(&is_updated_cond);
+		if (s != 0)
+			err_exit_en(s, "pthread_cond_signal");
 
 		sleep(nsecs);
 	}
@@ -182,22 +167,33 @@ int main(void)
 {
 	struct targ *arg;
 	pthread_t tid;
+	int s;
 
 	for (unsigned i = 0; i < NCOMPONENTS; i++) {
 		arg = malloc(sizeof *arg);
 		arg->sb_component = components[i];
 		arg->posn = i;
-		/* assume the thread frees arg */
-		pthread_create(&tid, NULL, thread, arg);
+
+		/* Assume the thread routine frees arg */
+		s = pthread_create(&tid, NULL, thread, arg);
+		if (s != 0)
+			err_exit_en(s, "pthread_create");
 	}
 
 	while (true) {
-		pthread_mutex_lock(&bufs_mutex);
-		if (!is_updated)
-			pthread_cond_wait(&is_updated_cond, &bufs_mutex);
+		s = pthread_mutex_lock(&bufs_mutex);
+		if (s != 0)
+			err_exit_en(s, "pthread_mutex_lock");
+		if (!is_updated) {
+			s = pthread_cond_wait(&is_updated_cond, &bufs_mutex);
+			if (s != 0)
+				err_exit_en(s, "pthread_cond_wait");
+		}
 		print_bufs();
 		is_updated = false;
-		pthread_mutex_unlock(&bufs_mutex);
+		s = pthread_mutex_unlock(&bufs_mutex);
+		if (s != 0)
+			err_exit_en(s, "pthread_mutex_unlock");
 	}
 
 	return EXIT_SUCCESS;

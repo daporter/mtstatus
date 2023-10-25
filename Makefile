@@ -9,7 +9,7 @@ all:    sbar
 sbar:   $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^
 
-# $(OBJS): foo.h bar.h
+sbar.o: errors.h
 
 .PHONY: clean
 clean:
