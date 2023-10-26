@@ -53,10 +53,9 @@ static pthread_mutex_t bufs_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool is_updated = false;
 static pthread_cond_t is_updated_cond = PTHREAD_COND_INITIALIZER;
 
-/* Text that indicates no value could be obtained */
-static const char unknown_str[] = "n/a";
-static_assert(sizeof(unknown_str) <= sizeof(component_bufs[0]),
-	      "unknown_str must be no bigger than component_buf");
+static const char no_val_str[] = "n/a";
+static_assert(sizeof(no_val_str) <= sizeof(component_bufs[0]),
+	      "no_val_str must be no bigger than component_buf");
 
 static void datetime(char *buf)
 {
@@ -66,13 +65,13 @@ static void datetime(char *buf)
 	t = time(NULL);
 	if (t == -1) {
 		err_msg("[datetime] Unable to obtain the current time");
-		if (snprintf(buf, MAX_COMP_LEN, "%s", unknown_str) < 0)
+		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
 			err_exit("[datetime] snprintf");
 		return;
 	}
 	if (localtime_r(&t, &now) == NULL) {
 		err_msg("[datetime] Unable to determine local time");
-		if (snprintf(buf, MAX_COMP_LEN, "%s", unknown_str) < 0)
+		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
 			err_exit("[datetime] snprintf");
 		return;
 	}
@@ -91,7 +90,7 @@ static void ram_free(char *buf)
 	fp = fopen(meminfo, "r");
 	if (fp == NULL) {
 		err_msg("[ram_free] Unable to open %s", meminfo);
-		if (snprintf(buf, MAX_COMP_LEN, "%s", unknown_str) < 0)
+		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
 			err_exit("[ram_free] snprintf");
 		return;
 	}
@@ -100,7 +99,7 @@ static void ram_free(char *buf)
 		   "MemFree: %s kB\n",
 		   total_str, free_str) == EOF) {
 		err_msg("[ram_free] Unable to parse %s", meminfo);
-		if (snprintf(buf, MAX_COMP_LEN, "%s", unknown_str) < 0)
+		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
 			err_exit("[ram_free] snprintf");
 		if (fclose(fp) == EOF)
 			err_exit("[ram_free] fclose");
@@ -112,7 +111,7 @@ static void ram_free(char *buf)
 	free = strtoumax(free_str, NULL, 0);
 	if (free == 0) {
 		err_msg("[ram_free] Unable to parse %s", meminfo);
-		if (snprintf(buf, MAX_COMP_LEN, "%s", unknown_str) < 0)
+		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
 			err_exit("[ram_free] snprintf");
 		return;
 	}
@@ -226,4 +225,3 @@ int main()
 
 	return EXIT_SUCCESS;
 }
-so
