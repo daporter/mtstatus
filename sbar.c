@@ -1,7 +1,7 @@
 /* TODO:
+   - Handle async component update (via signal).
    - Add handlers for SIGINT, etc., for clean shutdown.
    - Refactor error handling.
-   - Handle async component update (via signal).
    - Add more component functions (see ‘syscalls(2) manpage’). */
 
 #include <assert.h>
@@ -121,7 +121,7 @@ static void ram_free(char *buf)
 		err_exit("[ram_free] snprintf");
 }
 
-static void *thread(void *arg)
+static void *thread_upd_repeating(void *arg)
 {
 	void (*update)(char *);
 	unsigned nsecs;
@@ -163,34 +163,11 @@ static void *thread(void *arg)
 	return NULL;
 }
 
-static void print_component_bufs(void)
+static void *thread_print_sbar(void *unused)
 {
-	unsigned i;
-
-	for (i = 0; i < NCOMPONENTS - 1; i++)
-		printf("%s  |  ", component_bufs[i]);
-	printf("%s\n", component_bufs[i]);
-}
-
-int main(void)
-{
-	struct targ *arg;
-	pthread_t tid;
 	int s;
+	size_t i;
 
-	/* Create the threads */
-	for (unsigned i = 0; i < NCOMPONENTS; i++) {
-		arg = malloc(sizeof *arg);
-		arg->component = components[i];
-		arg->posn = i;
-
-		/* We assume the thread routine frees arg */
-		s = pthread_create(&tid, NULL, thread, arg);
-		if (s != 0)
-			err_exit_en(s, "pthread_create");
-	}
-
-	/* Print-status-bar loop */
 	while (true) {
 		s = pthread_mutex_lock(&bufs_mutex);
 		if (s != 0)
@@ -200,12 +177,53 @@ int main(void)
 			if (s != 0)
 				err_exit_en(s, "pthread_cond_wait");
 		}
-		print_component_bufs();
+
+		for (i = 0; i < NCOMPONENTS - 1; i++)
+			printf("%s  |  ", component_bufs[i]);
+		printf("%s\n", component_bufs[i]);
+
 		is_updated = false;
 		s = pthread_mutex_unlock(&bufs_mutex);
 		if (s != 0)
 			err_exit_en(s, "pthread_mutex_unlock");
 	}
 
+	return unused;
+}
+
+int main()
+{
+	struct targ *arg;
+	pthread_t tid;
+	int s;
+
+	/* Create threads for the repeating updaters */
+	/* TODO: don’t create threads for components that are async-only */
+	for (unsigned i = 0; i < NCOMPONENTS; i++) {
+		arg = malloc(sizeof *arg);
+		arg->component = components[i];
+		arg->posn = i;
+
+		/* We assume the thread routine frees arg */
+		s = pthread_create(&tid, NULL, thread_upd_repeating, arg);
+		if (s != 0)
+			err_exit_en(s, "pthread_create");
+	}
+
+	/* Create the thread for printing the status bar */
+	s = pthread_create(&tid, NULL, thread_print_sbar, NULL);
+	if (s != 0)
+		err_exit_en(s, "pthread_create");
+
+	/* Wait for signals to create a one-time updater */
+	while (true) {
+		if (pause() < 0)
+			err_exit("pause");
+
+		/* Create thread for one-time update corresponding to
+		signal type */
+	}
+
 	return EXIT_SUCCESS;
 }
+so
