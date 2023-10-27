@@ -1,12 +1,13 @@
 /* TODO:
-   - Handle async component update (via signal).
    - Add handlers for SIGINT, etc., for clean shutdown.
+   - Output to X.
    - Refactor error handling.
    - Add more component functions (see ‘syscalls(2) manpage’). */
 
 #include <assert.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -23,7 +24,8 @@ static void datetime(char *buf);
 /* A status bar component */
 struct component {
 	void (*update)(char *);
-	unsigned sleep_secs;
+	int sleep_secs;
+	int signo;
 };
 
 /* The components that make up the status bar.
@@ -31,14 +33,24 @@ struct component {
    Each element consists of an updater function and a sleep interval (in
    seconds).  The order of the elements defines the order of components in the
    status bar. */
+
+/*
+ * Realtime signals are not individually identified by different constants in
+ * the manner of standard signals. However, an application should not hard-code
+ * integer values for them, since the range used for realtime signals varies
+ * across UNIX implementations. Instead, a realtime signal number can be
+ * referred to by adding a value to SIGRTMIN; for example, the expression
+ * (SIGRTMIN + 1) refers to the second realtime signal.
+ */
 static const struct component components[] = {
-	/* function, sleep */
-	{ ram_free, 2 },
-	{ datetime, 2 },
-	{ datetime, 1 },
+	/* function, sleep, signal */
+	{ ram_free, 2, -1 },
+	{ datetime, 2, -1 },
+	{ datetime, 1, 0 },
+	{ datetime, -1, 1 },
 };
 
-/* Argument passed to the thread routine */
+/* Argument passed to a single-update thread */
 struct targ {
 	struct component component;
 	unsigned posn;
@@ -56,6 +68,12 @@ static pthread_cond_t is_updated_cond = PTHREAD_COND_INITIALIZER;
 static const char no_val_str[] = "n/a";
 static_assert(sizeof(no_val_str) <= sizeof(component_bufs[0]),
 	      "no_val_str must be no bigger than component_buf");
+
+/*
+ * Array of flags indicating which signals have been received and not yet
+   processed.  Set by the signal handler.
+ */
+static volatile sig_atomic_t *sigs_received;
 
 static void datetime(char *buf)
 {
@@ -120,46 +138,38 @@ static void ram_free(char *buf)
 		err_exit("[ram_free] snprintf");
 }
 
-static void *thread_upd_repeating(void *arg)
+void sig_handler(int signo)
 {
-	void (*update)(char *);
-	unsigned nsecs;
-	unsigned posn;
-	int s;
-	char buf[MAX_COMP_LEN];
+	sigs_received[signo - SIGRTMIN] = true;
+	printf("Signal received: SIGRTMIN+%d\n", signo - SIGRTMIN);
+}
 
-	/* Unpack arg */
-	update = ((struct targ *)arg)->component.update;
-	nsecs = ((struct targ *)arg)->component.sleep_secs;
-	posn = ((struct targ *)arg)->posn;
-	free(arg);
+int install_signal_handlers(void)
+{
+	struct sigaction sa = { 0 };
+	int signo;
+	int nsigs = 0;
 
-	s = pthread_detach(pthread_self());
-	if (s != 0)
-		err_exit_en(s, "pthread_detach");
+	sa.sa_flags = SA_RESTART;
+	sa.sa_handler = sig_handler;
 
-	/* Component-update loop */
-	while (true) {
-		update(buf);
-		s = pthread_mutex_lock(&bufs_mutex);
-		if (s != 0)
-			err_exit_en(s, "pthread_mutex_lock");
-		static_assert(sizeof(component_bufs[posn]) >= sizeof(buf),
-			      "component_buf must be at least as large as buf");
-		memcpy(component_bufs[posn], buf, sizeof buf);
-		is_updated = true;
-		s = pthread_mutex_unlock(&bufs_mutex);
-		if (s != 0)
-			err_exit_en(s, "pthread_mutex_unlock");
+	for (size_t i = 0; i < NCOMPONENTS; i++) {
+		signo = components[i].signo;
+		if (signo >= 0) {
+			assert(SIGRTMIN + signo <= SIGRTMAX &&
+			       "signal number must be <= SIGRTMAX");
 
-		s = pthread_cond_signal(&is_updated_cond);
-		if (s != 0)
-			err_exit_en(s, "pthread_cond_signal");
-
-		sleep(nsecs);
+			if (sigaction(SIGRTMIN + signo, &sa, NULL) < 0)
+				err_exit("sigaction");
+			printf("Created signal handler for SIGRTMAX+%d\n",
+			       signo);
+			nsigs++;
+		}
 	}
 
-	return NULL;
+	sigs_received = calloc(nsigs, sizeof *sigs_received);
+
+	return nsigs;
 }
 
 static void *thread_print_sbar(void *unused)
@@ -190,37 +200,169 @@ static void *thread_print_sbar(void *unused)
 	return unused;
 }
 
-int main()
+static void *thread_upd_repeating(void *arg)
+{
+	void (*update)(char *);
+	unsigned nsecs;
+	unsigned posn;
+	int s;
+	char buf[MAX_COMP_LEN];
+
+	/* Unpack arg */
+	update = ((struct targ *)arg)->component.update;
+	nsecs = ((struct targ *)arg)->component.sleep_secs;
+	posn = ((struct targ *)arg)->posn;
+	free(arg);
+
+	printf("Created repeating thread for components[%u] with sleep %u\n",
+	       posn, nsecs);
+
+	s = pthread_detach(pthread_self());
+	if (s != 0)
+		err_exit_en(s, "pthread_detach");
+
+	/* Component-update loop */
+	while (true) {
+		update(buf);
+		s = pthread_mutex_lock(&bufs_mutex);
+		if (s != 0)
+			err_exit_en(s, "pthread_mutex_lock");
+		static_assert(sizeof(component_bufs[posn]) >= sizeof(buf),
+			      "component_buf must be at least as large as buf");
+		memcpy(component_bufs[posn], buf, sizeof buf);
+		is_updated = true;
+		s = pthread_mutex_unlock(&bufs_mutex);
+		if (s != 0)
+			err_exit_en(s, "pthread_mutex_unlock");
+
+		s = pthread_cond_signal(&is_updated_cond);
+		if (s != 0)
+			err_exit_en(s, "pthread_cond_signal");
+
+		sleep(nsecs);
+	}
+
+	return NULL;
+}
+
+static void *thread_upd_single(void *arg)
+{
+	void (*update)(char *);
+	unsigned posn;
+	int s;
+	char buf[MAX_COMP_LEN];
+
+	/* Unpack arg */
+	update = ((struct targ *)arg)->component.update;
+	posn = ((struct targ *)arg)->posn;
+	free(arg);
+
+	printf("Created single-update thread for components[%u]\n", posn);
+
+	s = pthread_detach(pthread_self());
+	if (s != 0)
+		err_exit_en(s, "pthread_detach");
+
+	update(buf);
+	s = pthread_mutex_lock(&bufs_mutex);
+	if (s != 0)
+		err_exit_en(s, "pthread_mutex_lock");
+	static_assert(sizeof(component_bufs[posn]) >= sizeof(buf),
+		      "component_buf must be at least as large as buf");
+	memcpy(component_bufs[posn], buf, sizeof buf);
+	is_updated = true;
+	s = pthread_mutex_unlock(&bufs_mutex);
+	if (s != 0)
+		err_exit_en(s, "pthread_mutex_unlock");
+
+	s = pthread_cond_signal(&is_updated_cond);
+	if (s != 0)
+		err_exit_en(s, "pthread_cond_signal");
+
+	return NULL;
+}
+
+/*
+ * Create the thread for printing the status bar
+ */
+void create_thread_sbar(void)
+{
+	pthread_t tid;
+	int ret;
+
+	ret = pthread_create(&tid, NULL, thread_print_sbar, NULL);
+	if (ret != 0)
+		err_exit_en(ret, "pthread_create");
+}
+
+/*
+ * Create threads for the repeating updaters.
+ */
+void create_threads_repeating(void)
 {
 	struct targ *arg;
 	pthread_t tid;
-	int s;
+	int ret;
 
-	/* Create threads for the repeating updaters */
-	/* TODO: don’t create threads for components that are async-only */
-	for (unsigned i = 0; i < NCOMPONENTS; i++) {
-		arg = malloc(sizeof *arg);
-		arg->component = components[i];
-		arg->posn = i;
+	for (size_t i = 0; i < NCOMPONENTS; i++) {
+		/* Is it a repeating component? */
+		if (components[i].sleep_secs >= 0) {
+			arg = malloc(sizeof *arg);
+			arg->component = components[i];
+			arg->posn = i;
 
-		/* We assume the thread routine frees arg */
-		s = pthread_create(&tid, NULL, thread_upd_repeating, arg);
-		if (s != 0)
-			err_exit_en(s, "pthread_create");
+			/* Assume the thread routine frees arg */
+			ret = pthread_create(&tid, NULL, thread_upd_repeating,
+					     arg);
+			if (ret != 0)
+				err_exit_en(ret, "pthread_create");
+		}
 	}
+}
 
-	/* Create the thread for printing the status bar */
-	s = pthread_create(&tid, NULL, thread_print_sbar, NULL);
-	if (s != 0)
-		err_exit_en(s, "pthread_create");
+void create_threads_single(int signo)
+{
+	struct targ *arg;
+	pthread_t tid;
+	int ret;
 
-	/* Wait for signals to create a one-time updater */
+	/* Find components that specify this signal */
+	for (size_t i = 0; i < NCOMPONENTS; i++) {
+		if (components[i].signo == signo) {
+			arg = malloc(sizeof *arg);
+			arg->component = components[i];
+			arg->posn = i;
+
+			/* Assume the thread routine frees arg */
+			ret = pthread_create(&tid, NULL, thread_upd_single,
+					     arg);
+			if (ret != 0)
+				err_exit_en(ret, "pthread_create");
+		}
+	}
+}
+
+void process_signals(int nsigs)
+{
+	for (int i = 0; i < nsigs; i++)
+		if (sigs_received[i]) {
+			create_threads_single(i);
+			sigs_received[i] = false;
+		}
+}
+
+int main(void)
+{
+	int nsigs;
+	
+	nsigs = install_signal_handlers();
+	create_thread_sbar();
+	create_threads_repeating();
+
+	/* Wait for signals to create single-update threads */
 	while (true) {
-		if (pause() < 0)
-			err_exit("pause");
-
-		/* Create thread for one-time update corresponding to
-		signal type */
+		pause();
+		process_signals(nsigs);
 	}
 
 	return EXIT_SUCCESS;
