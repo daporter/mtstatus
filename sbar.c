@@ -59,6 +59,8 @@ struct targ {
 #define NCOMPONENTS  ((sizeof components) / (sizeof(struct component)))
 #define MAX_COMP_LEN 128
 
+#define UNUSED(x) UNUSED_##x __attribute__((__unused__))
+
 /* Each thread writes to its own output buffer */
 static char component_bufs[NCOMPONENTS][MAX_COMP_LEN];
 static pthread_mutex_t bufs_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -138,7 +140,7 @@ static void ram_free(char *buf)
 		err_exit("[ram_free] snprintf");
 }
 
-void sig_handler(int signo)
+static void terminate(const int UNUSED(signo))
 {
 	sigs_received[signo - SIGRTMIN] = true;
 	printf("Signal received: SIGRTMIN+%d\n", signo - SIGRTMIN);
@@ -172,7 +174,7 @@ int install_signal_handlers(void)
 	return nsigs;
 }
 
-static void *thread_print_sbar(void *unused)
+static void *thread_print_sbar(void *UNUSED(arg))
 {
 	int s;
 	size_t i;
@@ -197,7 +199,7 @@ static void *thread_print_sbar(void *unused)
 			err_exit_en(s, "pthread_mutex_unlock");
 	}
 
-	return unused;
+	return NULL;
 }
 
 static void *thread_upd_repeating(void *arg)
