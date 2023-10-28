@@ -1,6 +1,8 @@
 /* TODO:
-   - Add handlers for SIGINT, etc., for clean shutdown.
    - Output to X.
+   - Add debugging output.
+   - Use config.h.
+   - Refactor duplicated code.
    - Refactor error handling.
    - Add more component functions (see ‘syscalls(2) manpage’). */
 
@@ -71,11 +73,13 @@ static const char no_val_str[] = "n/a";
 static_assert(sizeof(no_val_str) <= sizeof(component_bufs[0]),
 	      "no_val_str must be no bigger than component_buf");
 
+static volatile sig_atomic_t done;
+
 /*
  * Array of flags indicating which signals have been received and not yet
    processed.  Set by the signal handler.
  */
-static volatile sig_atomic_t *sigs_received;
+static volatile sig_atomic_t *sigs_recv;
 
 static void datetime(char *buf)
 {
@@ -142,34 +146,33 @@ static void ram_free(char *buf)
 
 static void terminate(const int UNUSED(signo))
 {
-	sigs_received[signo - SIGRTMIN] = true;
-	printf("Signal received: SIGRTMIN+%d\n", signo - SIGRTMIN);
+	done = true;
 }
 
-int install_signal_handlers(void)
+static void flag_signal(const int signo)
+{
+	sigs_recv[signo - SIGRTMIN] = true;
+}
+
+static int install_signal_handlers(void)
 {
 	struct sigaction sa = { 0 };
 	int signo;
 	int nsigs = 0;
 
 	sa.sa_flags = SA_RESTART;
-	sa.sa_handler = sig_handler;
+	sa.sa_handler = flag_signal;
 
 	for (size_t i = 0; i < NCOMPONENTS; i++) {
 		signo = components[i].signo;
 		if (signo >= 0) {
-			assert(SIGRTMIN + signo <= SIGRTMAX &&
-			       "signal number must be <= SIGRTMAX");
-
 			if (sigaction(SIGRTMIN + signo, &sa, NULL) < 0)
 				err_exit("sigaction");
-			printf("Created signal handler for SIGRTMAX+%d\n",
-			       signo);
 			nsigs++;
 		}
 	}
 
-	sigs_received = calloc(nsigs, sizeof *sigs_received);
+	sigs_recv = calloc(nsigs, sizeof *sigs_recv);
 
 	return nsigs;
 }
@@ -287,7 +290,7 @@ static void *thread_upd_single(void *arg)
 /*
  * Create the thread for printing the status bar
  */
-void create_thread_sbar(void)
+static void create_thread_sbar(void)
 {
 	pthread_t tid;
 	int ret;
@@ -300,7 +303,7 @@ void create_thread_sbar(void)
 /*
  * Create threads for the repeating updaters.
  */
-void create_threads_repeating(void)
+static void create_threads_repeating(void)
 {
 	struct targ *arg;
 	pthread_t tid;
@@ -322,7 +325,7 @@ void create_threads_repeating(void)
 	}
 }
 
-void create_threads_single(int signo)
+static void create_threads_single(const int signo)
 {
 	struct targ *arg;
 	pthread_t tid;
@@ -344,27 +347,33 @@ void create_threads_single(int signo)
 	}
 }
 
-void process_signals(int nsigs)
+static void process_signals(const int nsigs)
 {
 	for (int i = 0; i < nsigs; i++)
-		if (sigs_received[i]) {
+		if (sigs_recv[i]) {
 			create_threads_single(i);
-			sigs_received[i] = false;
+			sigs_recv[i] = false;
 		}
 }
 
 int main(void)
 {
+	struct sigaction sa = { 0 };
 	int nsigs;
-	
+
+	sa.sa_handler = terminate;
+	sigaction(SIGINT, &sa, NULL);
+	sigaction(SIGTERM, &sa, NULL);
+	sa.sa_flags |= SA_RESTART;
+
 	nsigs = install_signal_handlers();
 	create_thread_sbar();
 	create_threads_repeating();
 
 	/* Wait for signals to create single-update threads */
-	while (true) {
-		pause();
+	while (!done) {
 		process_signals(nsigs);
+		pause();
 	}
 
 	return EXIT_SUCCESS;
