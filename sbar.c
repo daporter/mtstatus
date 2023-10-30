@@ -1,9 +1,9 @@
 /* TODO:
-   - Add debugging output.
-   - Use config.h.
-   - Refactor duplicated code.
-   - Refactor error handling.
-   - Add more component functions (see ‘syscalls(2) manpage’). */
+ * - Add more component functions (see ‘syscalls(2) manpage’).
+ * - Use config.h.
+ * - Add debugging output.
+ * - Refactor duplicated code.
+ */
 
 #include <X11/Xlib.h>
 #include <assert.h>
@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include "errors.h"
+#include "util.h"
 
 static void ram_free(char *buf);
 static void datetime(char *buf);
@@ -47,9 +48,7 @@ struct component {
 static const struct component components[] = {
 	/* function, sleep, signal */
 	{ ram_free, 2, -1 },
-	{ datetime, 2, -1 },
-	{ datetime, 1, 0 },
-	{ datetime, -1, 1 },
+	{ datetime, 30, -1 },
 };
 
 /* Argument passed to the print-status thread */
@@ -98,18 +97,18 @@ static void datetime(char *buf)
 
 	t = time(NULL);
 	if (t == -1) {
-		err_msg("[datetime] Unable to obtain the current time");
+		warn("[datetime] Unable to obtain the current time");
 		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
-			err_exit("[datetime] snprintf");
+			die_errno("[datetime] snprintf");
 		return;
 	}
 	if (localtime_r(&t, &now) == NULL) {
-		err_msg("[datetime] Unable to determine local time");
+		warn("[datetime] Unable to determine local time");
 		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
-			err_exit("[datetime] snprintf");
+			die_errno("[datetime] snprintf");
 		return;
 	}
-	(void)strftime(buf, MAX_COMP_LEN, "%T", &now);
+	(void)strftime(buf, MAX_COMP_LEN, "  %a %d %b %R", &now);
 }
 
 static void ram_free(char *buf)
@@ -123,35 +122,36 @@ static void ram_free(char *buf)
 
 	fp = fopen(meminfo, "r");
 	if (fp == NULL) {
-		err_msg("[ram_free] Unable to open %s", meminfo);
+		warn("[ram_free] Unable to open %s", meminfo);
 		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
-			err_exit("[ram_free] snprintf");
+			die_errno("[ram_free] snprintf");
 		return;
 	}
 	if (fscanf(fp,
 		   "MemTotal: %s kB\n"
 		   "MemFree: %s kB\n",
 		   total_str, free_str) == EOF) {
-		err_msg("[ram_free] Unable to parse %s", meminfo);
+		warn("[ram_free] Unable to parse %s", meminfo);
 		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
-			err_exit("[ram_free] snprintf");
+			die_errno("[ram_free] snprintf");
 		if (fclose(fp) == EOF)
-			err_exit("[ram_free] fclose");
+			die_errno("[ram_free] fclose");
 		return;
 	}
 	if (fclose(fp) == EOF)
-		err_exit("[ram_free] fclose");
+		die_errno("[ram_free] fclose");
 
 	free = strtoumax(free_str, NULL, 0);
 	if (free == 0) {
-		err_msg("[ram_free] Unable to parse %s", meminfo);
+		warn("[ram_free] Unable to parse %s", meminfo);
 		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
-			err_exit("[ram_free] snprintf");
+			die_errno("[ram_free] snprintf");
 		return;
 	}
 
-	if (snprintf(buf, MAX_COMP_LEN, "%ju", free) < 0)
-		err_exit("[ram_free] snprintf");
+	fmt_human(free_str, LEN(free_str), free * K_IEC, K_IEC);
+	if (snprintf(buf, MAX_COMP_LEN, "  %s", free_str) < 0)
+		die_errno("[ram_free] snprintf");
 }
 
 static void terminate(const int UNUSED(signo))
@@ -177,7 +177,7 @@ static int install_signal_handlers(void)
 		signo = components[i].signo;
 		if (signo >= 0) {
 			if (sigaction(SIGRTMIN + signo, &sa, NULL) < 0)
-				err_exit("sigaction");
+				die_errno("sigaction");
 			nsigs++;
 		}
 	}
@@ -203,11 +203,11 @@ static void *thread_print_status(void *arg)
 	while (true) {
 		s = pthread_mutex_lock(&bufs_mutex);
 		if (s != 0)
-			err_exit_en(s, "pthread_mutex_lock");
+			die_errnum(s, "pthread_mutex_lock");
 		while (!is_updated) {
 			s = pthread_cond_wait(&is_updated_cond, &bufs_mutex);
 			if (s != 0)
-				err_exit_en(s, "pthread_cond_wait");
+				die_errnum(s, "pthread_cond_wait");
 		}
 
 		status[0] = '\0';
@@ -215,25 +215,25 @@ static void *thread_print_status(void *arg)
 			n = snprintf(status + len, sizeof status, "%s%s",
 				     component_bufs[i], divider);
 			if (n < 0)
-				err_exit("[thread_print_status] snprintf");
+				die_errno("[thread_print_status] snprintf");
 		}
 		if (snprintf(status + len, sizeof status, "%s",
 			     component_bufs[i]) < 0)
-			err_exit("[thread_print_status] snprintf");
+			die_errno("[thread_print_status] snprintf");
 
 		is_updated = false;
 		s = pthread_mutex_unlock(&bufs_mutex);
 		if (s != 0)
-			err_exit_en(s, "pthread_mutex_unlock");
+			die_errnum(s, "pthread_mutex_unlock");
 
 		if (to_stdout) {
 			if (puts(status) == EOF)
-				err_exit("[thread_print_status] puts");
+				die_errno("[thread_print_status] puts");
 			if (fflush(stdout) == EOF)
-				err_exit("[thread_print_status] fflush");
+				die_errno("[thread_print_status] fflush");
 		} else {
 			if (XStoreName(dpy, DefaultRootWindow(dpy), status) < 0)
-				fatal("XStoreName: Allocation failed");
+				die("XStoreName: Allocation failed");
 			XFlush(dpy);
 		}
 	}
@@ -257,25 +257,25 @@ static void *thread_upd_repeating(void *arg)
 
 	s = pthread_detach(pthread_self());
 	if (s != 0)
-		err_exit_en(s, "pthread_detach");
+		die_errnum(s, "pthread_detach");
 
 	/* Component-update loop */
 	while (true) {
 		update(buf);
 		s = pthread_mutex_lock(&bufs_mutex);
 		if (s != 0)
-			err_exit_en(s, "pthread_mutex_lock");
+			die_errnum(s, "pthread_mutex_lock");
 		static_assert(sizeof(component_bufs[posn]) >= sizeof(buf),
 			      "component_buf must be at least as large as buf");
 		memcpy(component_bufs[posn], buf, sizeof buf);
 		is_updated = true;
 		s = pthread_mutex_unlock(&bufs_mutex);
 		if (s != 0)
-			err_exit_en(s, "pthread_mutex_unlock");
+			die_errnum(s, "pthread_mutex_unlock");
 
 		s = pthread_cond_signal(&is_updated_cond);
 		if (s != 0)
-			err_exit_en(s, "pthread_cond_signal");
+			die_errnum(s, "pthread_cond_signal");
 
 		sleep(nsecs);
 	}
@@ -297,23 +297,23 @@ static void *thread_upd_single(void *arg)
 
 	s = pthread_detach(pthread_self());
 	if (s != 0)
-		err_exit_en(s, "pthread_detach");
+		die_errnum(s, "pthread_detach");
 
 	update(buf);
 	s = pthread_mutex_lock(&bufs_mutex);
 	if (s != 0)
-		err_exit_en(s, "pthread_mutex_lock");
+		die_errnum(s, "pthread_mutex_lock");
 	static_assert(sizeof(component_bufs[posn]) >= sizeof(buf),
 		      "component_buf must be at least as large as buf");
 	memcpy(component_bufs[posn], buf, sizeof buf);
 	is_updated = true;
 	s = pthread_mutex_unlock(&bufs_mutex);
 	if (s != 0)
-		err_exit_en(s, "pthread_mutex_unlock");
+		die_errnum(s, "pthread_mutex_unlock");
 
 	s = pthread_cond_signal(&is_updated_cond);
 	if (s != 0)
-		err_exit_en(s, "pthread_cond_signal");
+		die_errnum(s, "pthread_cond_signal");
 
 	return NULL;
 }
@@ -332,7 +332,7 @@ static void create_thread_print_status(bool to_stdout, Display *dpy)
 	arg->dpy = dpy;
 	ret = pthread_create(&tid, NULL, thread_print_status, arg);
 	if (ret != 0)
-		err_exit_en(ret, "pthread_create");
+		die_errnum(ret, "pthread_create");
 }
 
 /*
@@ -355,7 +355,7 @@ static void create_threads_repeating(void)
 			ret = pthread_create(&tid, NULL, thread_upd_repeating,
 					     arg);
 			if (ret != 0)
-				err_exit_en(ret, "pthread_create");
+				die_errnum(ret, "pthread_create");
 		}
 	}
 }
@@ -377,7 +377,7 @@ static void create_threads_single(const int signo)
 			ret = pthread_create(&tid, NULL, thread_upd_single,
 					     arg);
 			if (ret != 0)
-				err_exit_en(ret, "pthread_create");
+				die_errnum(ret, "pthread_create");
 		}
 	}
 }
@@ -409,14 +409,14 @@ int main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 			break;
 		default:
-			fatal("Unexpected case in switch()");
+			die("Unexpected case in switch()");
 		}
 	}
 
 	if (!to_stdout) {
 		dpy = XOpenDisplay(NULL);
 		if (dpy == NULL)
-			fatal("XOpenDisplay: Failed to open display");
+			die("XOpenDisplay: Failed to open display");
 	}
 
 	memset(&sa, 0, sizeof sa);
@@ -439,7 +439,7 @@ int main(int argc, char *argv[])
 	if (!to_stdout) {
 		XStoreName(dpy, DefaultRootWindow(dpy), NULL);
 		if (XCloseDisplay(dpy) < 0)
-			fatal("XCloseDisplay: Failed to close display");
+			die("XCloseDisplay: Failed to close display");
 	}
 
 	return EXIT_SUCCESS;

@@ -5,10 +5,10 @@
 
 /* Error diagnostic routines */
 
-void err_msg_en(int errnum, const char *format, ...);
-void err_msg(const char *format, ...);
-void err_exit_en(int errnum, const char *format, ...);
-void err_exit(const char *format, ...);
-void fatal(const char *format, ...);
+void warn_errnum(int errnum, const char *format, ...);
+void warn(const char *format, ...);
+void die_errnum(int errnum, const char *format, ...);
+void die_errno(const char *fmt, ...);
+void die(const char *format, ...);
 
 #endif

@@ -1,7 +1,9 @@
-/* Some standard error handling routines used by various programs.
-
-   Based on the code from the book "The Linux Programming Interface" by Michael
-   Kerrisk. */
+/*
+ * Some standard error handling routines used by various programs.
+ *
+ * Based on the code from the book "The Linux Programming Interface" by Michael
+ * Kerrisk.
+ */
 
 #include <errno.h>
 #include <stdarg.h>
@@ -17,57 +19,55 @@
  *
  *   - outputting the corresponding error message from strerror(), and
  *
- *   - outputting the caller-supplied error message specified in ‘format’ and
- *     ‘ap’.
+ *   - outputting the caller-supplied error message specified in ‘fmt’ and ‘ap’.
  */
-static void output_error(bool use_err, int err, const char *format, va_list ap)
+static void verr(bool use_err, int err, const char *fmt, va_list ap)
 {
-	char user_msg[BUF_SIZE];
+	char msg[BUF_SIZE];
 
-	(void)vsnprintf(user_msg, BUF_SIZE, format, ap);
+	(void)vsnprintf(msg, BUF_SIZE, fmt, ap);
 
 	if (use_err)
-		(void)fprintf(stderr, "ERROR -- %s: %s\n", user_msg,
-			      strerror(err));
+		(void)fprintf(stderr, "ERROR -- %s: %s\n", msg, strerror(err));
 	else
-		(void)fprintf(stderr, "ERROR -- %s\n", user_msg);
+		(void)fprintf(stderr, "ERROR -- %s\n", msg);
 }
 
 /*
  * Display error message including ‘errnum’ diagnostic, and return to caller.
  */
-void err_msg_en(int errnum, const char *format, ...)
+void warn_errnum(int errnum, const char *fmt, ...)
 {
-	va_list arg_list;
+	va_list ap;
 
-	va_start(arg_list, format);
-	output_error(true, errnum, format, arg_list);
-	va_end(arg_list);
+	va_start(ap, fmt);
+	verr(true, errnum, fmt, ap);
+	va_end(ap);
 }
 
 /*
  * Display error message including ‘errno’ diagnostic, and return to caller.
  */
-void err_msg(const char *format, ...)
+void warn(const char *fmt, ...)
 {
-	va_list arg_list;
+	va_list ap;
 
-	va_start(arg_list, format);
-	output_error(true, errno, format, arg_list);
-	va_end(arg_list);
+	va_start(ap, fmt);
+	verr(true, errno, fmt, ap);
+	va_end(ap);
 }
 
 /*
  * Display error message including ‘errnum’ diagnostic, and terminate the
  * process.
  */
-void err_exit_en(int errnum, const char *format, ...)
+void die_errnum(int errnum, const char *fmt, ...)
 {
-	va_list arg_list;
+	va_list ap;
 
-	va_start(arg_list, format);
-	output_error(true, errnum, format, arg_list);
-	va_end(arg_list);
+	va_start(ap, fmt);
+	verr(true, errnum, fmt, ap);
+	va_end(ap);
 
 	exit(EXIT_FAILURE);
 }
@@ -76,27 +76,24 @@ void err_exit_en(int errnum, const char *format, ...)
  * Display error message including ‘errno’ diagnostic, and terminate the
  * process.
  */
-void err_exit(const char *format, ...)
+void die_errno(const char *fmt, ...)
 {
-	va_list arg_list;
+	va_list ap;
 
-	va_start(arg_list, format);
-	output_error(true, errno, format, arg_list);
-	va_end(arg_list);
+	va_start(ap, fmt);
+	verr(true, errno, fmt, ap);
+	va_end(ap);
 
 	exit(EXIT_FAILURE);
 }
 
-/*
- * Print an error message (without an 'errno' diagnostic).
- */
-void fatal(const char *format, ...)
+void die(const char *fmt, ...)
 {
-	va_list argList;
+	va_list ap;
 
-	va_start(argList, format);
-	output_error(false, 0, format, argList);
-	va_end(argList);
+	va_start(ap, fmt);
+	verr(false, 0, fmt, ap);
+	va_end(ap);
 
 	exit(EXIT_FAILURE);
 }

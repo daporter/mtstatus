@@ -12,7 +12,8 @@ all:    sbar
 sbar:   $(OBJS)
 	$(CC) $(CFLAGS) $(LDLIBS) -o $@ $^
 
-sbar.o: errors.h
+sbar.o: util.h errors.h
+util.o: util.h errors.h
 
 .PHONY: clean
 clean:
