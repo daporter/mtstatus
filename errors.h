@@ -9,5 +9,6 @@ void err_msg_en(int errnum, const char *format, ...);
 void err_msg(const char *format, ...);
 void err_exit_en(int errnum, const char *format, ...);
 void err_exit(const char *format, ...);
+void fatal(const char *format, ...);
 
 #endif

@@ -1,11 +1,11 @@
 /* TODO:
-   - Output to X.
    - Add debugging output.
    - Use config.h.
    - Refactor duplicated code.
    - Refactor error handling.
    - Add more component functions (see ‘syscalls(2) manpage’). */
 
+#include <X11/Xlib.h>
 #include <assert.h>
 #include <inttypes.h>
 #include <pthread.h>
@@ -52,8 +52,14 @@ static const struct component components[] = {
 	{ datetime, -1, 1 },
 };
 
+/* Argument passed to the print-status thread */
+struct targ_status {
+	bool to_stdout;
+	Display *dpy;
+};
+
 /* Argument passed to a single-update thread */
-struct targ {
+struct targ_updater {
 	struct component component;
 	unsigned posn;
 };
@@ -72,6 +78,10 @@ static pthread_cond_t is_updated_cond = PTHREAD_COND_INITIALIZER;
 static const char no_val_str[] = "n/a";
 static_assert(sizeof(no_val_str) <= sizeof(component_bufs[0]),
 	      "no_val_str must be no bigger than component_buf");
+
+static const char divider[] = "  |  ";
+static_assert(sizeof(divider) <= sizeof(component_bufs[0]),
+	      "divider must be no bigger than component_buf");
 
 static volatile sig_atomic_t done;
 
@@ -177,10 +187,18 @@ static int install_signal_handlers(void)
 	return nsigs;
 }
 
-static void *thread_print_sbar(void *UNUSED(arg))
+static void *thread_print_status(void *arg)
 {
-	int s;
-	size_t i;
+	bool to_stdout;
+	Display *dpy;
+	int s, n;
+	size_t i, len;
+	char status[sizeof component_bufs];
+
+	/* Unpack arg */
+	to_stdout = ((struct targ_status *)arg)->to_stdout;
+	dpy = ((struct targ_status *)arg)->dpy;
+	free(arg);
 
 	while (true) {
 		s = pthread_mutex_lock(&bufs_mutex);
@@ -192,14 +210,32 @@ static void *thread_print_sbar(void *UNUSED(arg))
 				err_exit_en(s, "pthread_cond_wait");
 		}
 
-		for (i = 0; i < NCOMPONENTS - 1; i++)
-			printf("%s  |  ", component_bufs[i]);
-		printf("%s\n", component_bufs[i]);
+		status[0] = '\0';
+		for (i = len = 0; i < NCOMPONENTS - 1; i++, len += n) {
+			n = snprintf(status + len, sizeof status, "%s%s",
+				     component_bufs[i], divider);
+			if (n < 0)
+				err_exit("[thread_print_status] snprintf");
+		}
+		if (snprintf(status + len, sizeof status, "%s",
+			     component_bufs[i]) < 0)
+			err_exit("[thread_print_status] snprintf");
 
 		is_updated = false;
 		s = pthread_mutex_unlock(&bufs_mutex);
 		if (s != 0)
 			err_exit_en(s, "pthread_mutex_unlock");
+
+		if (to_stdout) {
+			if (puts(status) == EOF)
+				err_exit("[thread_print_status] puts");
+			if (fflush(stdout) == EOF)
+				err_exit("[thread_print_status] fflush");
+		} else {
+			if (XStoreName(dpy, DefaultRootWindow(dpy), status) < 0)
+				fatal("XStoreName: Allocation failed");
+			XFlush(dpy);
+		}
 	}
 
 	return NULL;
@@ -214,13 +250,10 @@ static void *thread_upd_repeating(void *arg)
 	char buf[MAX_COMP_LEN];
 
 	/* Unpack arg */
-	update = ((struct targ *)arg)->component.update;
-	nsecs = ((struct targ *)arg)->component.sleep_secs;
-	posn = ((struct targ *)arg)->posn;
+	update = ((struct targ_updater *)arg)->component.update;
+	nsecs = ((struct targ_updater *)arg)->component.sleep_secs;
+	posn = ((struct targ_updater *)arg)->posn;
 	free(arg);
-
-	printf("Created repeating thread for components[%u] with sleep %u\n",
-	       posn, nsecs);
 
 	s = pthread_detach(pthread_self());
 	if (s != 0)
@@ -258,11 +291,9 @@ static void *thread_upd_single(void *arg)
 	char buf[MAX_COMP_LEN];
 
 	/* Unpack arg */
-	update = ((struct targ *)arg)->component.update;
-	posn = ((struct targ *)arg)->posn;
+	update = ((struct targ_updater *)arg)->component.update;
+	posn = ((struct targ_updater *)arg)->posn;
 	free(arg);
-
-	printf("Created single-update thread for components[%u]\n", posn);
 
 	s = pthread_detach(pthread_self());
 	if (s != 0)
@@ -290,12 +321,16 @@ static void *thread_upd_single(void *arg)
 /*
  * Create the thread for printing the status bar
  */
-static void create_thread_sbar(void)
+static void create_thread_print_status(bool to_stdout, Display *dpy)
 {
+	struct targ_status *arg;
 	pthread_t tid;
 	int ret;
 
-	ret = pthread_create(&tid, NULL, thread_print_sbar, NULL);
+	arg = malloc(sizeof *arg);
+	arg->to_stdout = to_stdout;
+	arg->dpy = dpy;
+	ret = pthread_create(&tid, NULL, thread_print_status, arg);
 	if (ret != 0)
 		err_exit_en(ret, "pthread_create");
 }
@@ -305,7 +340,7 @@ static void create_thread_sbar(void)
  */
 static void create_threads_repeating(void)
 {
-	struct targ *arg;
+	struct targ_updater *arg;
 	pthread_t tid;
 	int ret;
 
@@ -327,7 +362,7 @@ static void create_threads_repeating(void)
 
 static void create_threads_single(const int signo)
 {
-	struct targ *arg;
+	struct targ_updater *arg;
 	pthread_t tid;
 	int ret;
 
@@ -356,24 +391,55 @@ static void process_signals(const int nsigs)
 		}
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
-	struct sigaction sa = { 0 };
+	int opt;
+	bool to_stdout = false;
+	Display *dpy = NULL;
+	struct sigaction sa;
 	int nsigs;
 
+	while ((opt = getopt(argc, argv, "s")) != -1) {
+		switch (opt) {
+		case 's':
+			to_stdout = true;
+			break;
+		case '?':
+			(void)fprintf(stderr, "Usage: %s [-s]\n", argv[0]);
+			exit(EXIT_FAILURE);
+			break;
+		default:
+			fatal("Unexpected case in switch()");
+		}
+	}
+
+	if (!to_stdout) {
+		dpy = XOpenDisplay(NULL);
+		if (dpy == NULL)
+			fatal("XOpenDisplay: Failed to open display");
+	}
+
+	memset(&sa, 0, sizeof sa);
 	sa.sa_handler = terminate;
 	sigaction(SIGINT, &sa, NULL);
 	sigaction(SIGTERM, &sa, NULL);
 	sa.sa_flags |= SA_RESTART;
 
 	nsigs = install_signal_handlers();
-	create_thread_sbar();
+
+	create_thread_print_status(to_stdout, dpy);
 	create_threads_repeating();
 
 	/* Wait for signals to create single-update threads */
 	while (!done) {
 		process_signals(nsigs);
 		pause();
+	}
+
+	if (!to_stdout) {
+		XStoreName(dpy, DefaultRootWindow(dpy), NULL);
+		if (XCloseDisplay(dpy) < 0)
+			fatal("XCloseDisplay: Failed to close display");
 	}
 
 	return EXIT_SUCCESS;
