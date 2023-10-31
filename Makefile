@@ -1,5 +1,6 @@
 CFLAGS = -pthread -Og -g3 -Wall -Wextra -pedantic -Werror
 LDLIBS = -lX11
+BIN    = sbar
 
 # TODO: add a release mode that disables assertions, etc.
 
@@ -9,12 +10,12 @@ OBJS   = $(SRCS:.c=.o)
 .PHONY: all
 all:    sbar
 
-sbar:   $(OBJS)
+$(BIN): $(OBJS)
 	$(CC) $(CFLAGS) $(LDLIBS) -o $@ $^
 
-sbar.o: util.h errors.h
+main.o: util.h errors.h
 util.o: util.h errors.h
 
 .PHONY: clean
 clean:
-	$(RM) $(OBJS) sbar core
+	$(RM) $(OBJS) $(BIN) core
