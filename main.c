@@ -5,10 +5,8 @@
  * - Refactor duplicated code.
  */
 
-#include <X11/Xlib.h>
 #include <assert.h>
 #include <inttypes.h>
-#include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -28,7 +26,7 @@ static void datetime(char *buf);
 struct component {
 	void (*update)(char *);
 	int sleep_secs;
-	int signo;
+	int signum;
 };
 
 /* The components that make up the status bar.
@@ -88,27 +86,25 @@ static volatile sig_atomic_t done;
  * Array of flags indicating which signals have been received and not yet
    processed.  Set by the signal handler.
  */
-static volatile sig_atomic_t *sigs_recv;
+static volatile sig_atomic_t *signals_received;
 
 static void datetime(char *buf)
 {
 	time_t t;
 	struct tm now;
 
-	t = time(NULL);
-	if (t == -1) {
-		warn("[datetime] Unable to obtain the current time");
-		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
-			die_errno("[datetime] snprintf");
+	if ((t = time(NULL)) == -1) {
+		unix_warn("[datetime] Unable to obtain the current time");
+		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
 		return;
 	}
 	if (localtime_r(&t, &now) == NULL) {
-		warn("[datetime] Unable to determine local time");
-		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
-			die_errno("[datetime] snprintf");
+		unix_warn("[datetime] Unable to determine local time");
+		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
 		return;
 	}
-	(void)strftime(buf, MAX_COMP_LEN, "  %a %d %b %R", &now);
+	if (strftime(buf, MAX_COMP_LEN, "  %a %d %b %R", &now) == 0)
+		unix_warn("[datetime] Unable to format time");
 }
 
 static void ram_free(char *buf)
@@ -120,69 +116,57 @@ static void ram_free(char *buf)
 	char total_str[MAX_COMP_LEN], free_str[MAX_COMP_LEN];
 	uintmax_t free;
 
-	fp = fopen(meminfo, "r");
-	if (fp == NULL) {
-		warn("[ram_free] Unable to open %s", meminfo);
-		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
-			die_errno("[ram_free] snprintf");
+	if ((fp = fopen(meminfo, "r")) == NULL) {
+		unix_warn("[ram_free] Unable to open %s", meminfo);
+		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
 		return;
 	}
 	if (fscanf(fp,
 		   "MemTotal: %s kB\n"
 		   "MemFree: %s kB\n",
 		   total_str, free_str) == EOF) {
-		warn("[ram_free] Unable to parse %s", meminfo);
-		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
-			die_errno("[ram_free] snprintf");
-		if (fclose(fp) == EOF)
-			die_errno("[ram_free] fclose");
+		unix_warn("[ram_free] Unable to parse %s", meminfo);
+		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
+		Fclose(fp);
 		return;
 	}
-	if (fclose(fp) == EOF)
-		die_errno("[ram_free] fclose");
+	Fclose(fp);
 
-	free = strtoumax(free_str, NULL, 0);
-	if (free == 0) {
-		warn("[ram_free] Unable to parse %s", meminfo);
-		if (snprintf(buf, MAX_COMP_LEN, "%s", no_val_str) < 0)
-			die_errno("[ram_free] snprintf");
+	if ((free = strtoumax(free_str, NULL, 0)) == 0 || free == INTMAX_MAX ||
+	    free == UINTMAX_MAX) {
+		app_warn("[ram_free] Unable to convert value %s", free_str);
+		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
 		return;
 	}
 
 	fmt_human(free_str, LEN(free_str), free * K_IEC, K_IEC);
-	if (snprintf(buf, MAX_COMP_LEN, "  %s", free_str) < 0)
-		die_errno("[ram_free] snprintf");
+	Snprintf(buf, MAX_COMP_LEN, "  %s", free_str);
 }
 
-static void terminate(const int UNUSED(signo))
+static void terminate(const int UNUSED(signum))
 {
 	done = true;
 }
 
-static void flag_signal(const int signo)
+static void flag_signal(const int signum)
 {
-	sigs_recv[signo - SIGRTMIN] = true;
+	signals_received[signum - SIGRTMIN] = true;
 }
 
 static int install_signal_handlers(void)
 {
-	struct sigaction sa = { 0 };
-	int signo;
+	int signum;
 	int nsigs = 0;
 
-	sa.sa_flags = SA_RESTART;
-	sa.sa_handler = flag_signal;
-
 	for (size_t i = 0; i < NCOMPONENTS; i++) {
-		signo = components[i].signo;
-		if (signo >= 0) {
-			if (sigaction(SIGRTMIN + signo, &sa, NULL) < 0)
-				die_errno("sigaction");
+		signum = components[i].signum;
+		if (signum >= 0) {
+			Signal(SIGRTMIN + signum, flag_signal);
 			nsigs++;
 		}
 	}
 
-	sigs_recv = calloc(nsigs, sizeof *sigs_recv);
+	signals_received = Calloc(nsigs, sizeof *signals_received);
 
 	return nsigs;
 }
@@ -191,50 +175,35 @@ static void *thread_print_status(void *arg)
 {
 	bool to_stdout;
 	Display *dpy;
-	int s, n;
+	int n;
 	size_t i, len;
 	char status[sizeof component_bufs];
 
 	/* Unpack arg */
 	to_stdout = ((struct targ_status *)arg)->to_stdout;
 	dpy = ((struct targ_status *)arg)->dpy;
-	free(arg);
+	Free(arg);
 
 	while (true) {
-		s = pthread_mutex_lock(&bufs_mutex);
-		if (s != 0)
-			die_errnum(s, "pthread_mutex_lock");
-		while (!is_updated) {
-			s = pthread_cond_wait(&is_updated_cond, &bufs_mutex);
-			if (s != 0)
-				die_errnum(s, "pthread_cond_wait");
-		}
+		Pthread_mutex_lock(&bufs_mutex);
+		while (!is_updated)
+			Pthread_cond_wait(&is_updated_cond, &bufs_mutex);
 
 		status[0] = '\0';
-		for (i = len = 0; i < NCOMPONENTS - 1; i++, len += n) {
-			n = snprintf(status + len, sizeof status, "%s%s",
+		for (i = len = 0; i < NCOMPONENTS - 1; i++, len += n)
+			n = Snprintf(status + len, sizeof status, "%s%s",
 				     component_bufs[i], divider);
-			if (n < 0)
-				die_errno("[thread_print_status] snprintf");
-		}
-		if (snprintf(status + len, sizeof status, "%s",
-			     component_bufs[i]) < 0)
-			die_errno("[thread_print_status] snprintf");
+		Snprintf(status + len, sizeof status, "%s", component_bufs[i]);
 
 		is_updated = false;
-		s = pthread_mutex_unlock(&bufs_mutex);
-		if (s != 0)
-			die_errnum(s, "pthread_mutex_unlock");
+		Pthread_mutex_unlock(&bufs_mutex);
 
 		if (to_stdout) {
-			if (puts(status) == EOF)
-				die_errno("[thread_print_status] puts");
-			if (fflush(stdout) == EOF)
-				die_errno("[thread_print_status] fflush");
+			Puts(status);
+			Fflush(stdout);
 		} else {
-			if (XStoreName(dpy, DefaultRootWindow(dpy), status) < 0)
-				die("XStoreName: Allocation failed");
-			XFlush(dpy);
+			xStoreName(dpy, DefaultRootWindow(dpy), status);
+			xFlush(dpy);
 		}
 	}
 
@@ -244,40 +213,28 @@ static void *thread_print_status(void *arg)
 static void *thread_upd_repeating(void *arg)
 {
 	void (*update)(char *);
-	unsigned nsecs;
-	unsigned posn;
-	int s;
+	unsigned nsecs, posn;
 	char buf[MAX_COMP_LEN];
 
 	/* Unpack arg */
 	update = ((struct targ_updater *)arg)->component.update;
 	nsecs = ((struct targ_updater *)arg)->component.sleep_secs;
 	posn = ((struct targ_updater *)arg)->posn;
-	free(arg);
+	Free(arg);
 
-	s = pthread_detach(pthread_self());
-	if (s != 0)
-		die_errnum(s, "pthread_detach");
+	Pthread_detach(Pthread_self());
 
 	/* Component-update loop */
 	while (true) {
 		update(buf);
-		s = pthread_mutex_lock(&bufs_mutex);
-		if (s != 0)
-			die_errnum(s, "pthread_mutex_lock");
+		Pthread_mutex_lock(&bufs_mutex);
 		static_assert(sizeof(component_bufs[posn]) >= sizeof(buf),
 			      "component_buf must be at least as large as buf");
 		memcpy(component_bufs[posn], buf, sizeof buf);
 		is_updated = true;
-		s = pthread_mutex_unlock(&bufs_mutex);
-		if (s != 0)
-			die_errnum(s, "pthread_mutex_unlock");
-
-		s = pthread_cond_signal(&is_updated_cond);
-		if (s != 0)
-			die_errnum(s, "pthread_cond_signal");
-
-		sleep(nsecs);
+		Pthread_mutex_unlock(&bufs_mutex);
+		Pthread_cond_signal(&is_updated_cond);
+		Sleep(nsecs);
 	}
 
 	return NULL;
@@ -287,33 +244,23 @@ static void *thread_upd_single(void *arg)
 {
 	void (*update)(char *);
 	unsigned posn;
-	int s;
 	char buf[MAX_COMP_LEN];
 
 	/* Unpack arg */
 	update = ((struct targ_updater *)arg)->component.update;
 	posn = ((struct targ_updater *)arg)->posn;
-	free(arg);
+	Free(arg);
 
-	s = pthread_detach(pthread_self());
-	if (s != 0)
-		die_errnum(s, "pthread_detach");
+	Pthread_detach(Pthread_self());
 
 	update(buf);
-	s = pthread_mutex_lock(&bufs_mutex);
-	if (s != 0)
-		die_errnum(s, "pthread_mutex_lock");
+	Pthread_mutex_lock(&bufs_mutex);
 	static_assert(sizeof(component_bufs[posn]) >= sizeof(buf),
 		      "component_buf must be at least as large as buf");
-	memcpy(component_bufs[posn], buf, sizeof buf);
+	Memcpy(component_bufs[posn], buf, sizeof buf);
 	is_updated = true;
-	s = pthread_mutex_unlock(&bufs_mutex);
-	if (s != 0)
-		die_errnum(s, "pthread_mutex_unlock");
-
-	s = pthread_cond_signal(&is_updated_cond);
-	if (s != 0)
-		die_errnum(s, "pthread_cond_signal");
+	Pthread_mutex_unlock(&bufs_mutex);
+	Pthread_cond_signal(&is_updated_cond);
 
 	return NULL;
 }
@@ -325,14 +272,11 @@ static void create_thread_print_status(bool to_stdout, Display *dpy)
 {
 	struct targ_status *arg;
 	pthread_t tid;
-	int ret;
 
-	arg = malloc(sizeof *arg);
+	arg = Malloc(sizeof *arg);
 	arg->to_stdout = to_stdout;
 	arg->dpy = dpy;
-	ret = pthread_create(&tid, NULL, thread_print_status, arg);
-	if (ret != 0)
-		die_errnum(ret, "pthread_create");
+	Pthread_create(&tid, NULL, thread_print_status, arg);
 }
 
 /*
@@ -342,42 +286,34 @@ static void create_threads_repeating(void)
 {
 	struct targ_updater *arg;
 	pthread_t tid;
-	int ret;
 
 	for (size_t i = 0; i < NCOMPONENTS; i++) {
 		/* Is it a repeating component? */
 		if (components[i].sleep_secs >= 0) {
-			arg = malloc(sizeof *arg);
+			arg = Malloc(sizeof *arg);
 			arg->component = components[i];
 			arg->posn = i;
 
 			/* Assume the thread routine frees arg */
-			ret = pthread_create(&tid, NULL, thread_upd_repeating,
-					     arg);
-			if (ret != 0)
-				die_errnum(ret, "pthread_create");
+			Pthread_create(&tid, NULL, thread_upd_repeating, arg);
 		}
 	}
 }
 
-static void create_threads_single(const int signo)
+static void create_threads_single(const int signum)
 {
 	struct targ_updater *arg;
 	pthread_t tid;
-	int ret;
 
 	/* Find components that specify this signal */
 	for (size_t i = 0; i < NCOMPONENTS; i++) {
-		if (components[i].signo == signo) {
-			arg = malloc(sizeof *arg);
+		if (components[i].signum == signum) {
+			arg = Malloc(sizeof *arg);
 			arg->component = components[i];
 			arg->posn = i;
 
 			/* Assume the thread routine frees arg */
-			ret = pthread_create(&tid, NULL, thread_upd_single,
-					     arg);
-			if (ret != 0)
-				die_errnum(ret, "pthread_create");
+			Pthread_create(&tid, NULL, thread_upd_single, arg);
 		}
 	}
 }
@@ -385,9 +321,9 @@ static void create_threads_single(const int signo)
 static void process_signals(const int nsigs)
 {
 	for (int i = 0; i < nsigs; i++)
-		if (sigs_recv[i]) {
+		if (signals_received[i]) {
 			create_threads_single(i);
-			sigs_recv[i] = false;
+			signals_received[i] = false;
 		}
 }
 
@@ -396,7 +332,6 @@ int main(int argc, char *argv[])
 	int opt;
 	bool to_stdout = false;
 	Display *dpy = NULL;
-	struct sigaction sa;
 	int nsigs;
 
 	while ((opt = getopt(argc, argv, "s")) != -1) {
@@ -405,25 +340,18 @@ int main(int argc, char *argv[])
 			to_stdout = true;
 			break;
 		case '?':
-			(void)fprintf(stderr, "Usage: %s [-s]\n", argv[0]);
-			exit(EXIT_FAILURE);
+			app_error("Usage: %s [-s]", argv[0]);
 			break;
 		default:
-			die("Unexpected case in switch()");
+			app_error("Unexpected case in switch()");
 		}
 	}
 
-	if (!to_stdout) {
-		dpy = XOpenDisplay(NULL);
-		if (dpy == NULL)
-			die("XOpenDisplay: Failed to open display");
-	}
+	if (!to_stdout)
+		dpy = xOpenDisplay(NULL);
 
-	memset(&sa, 0, sizeof sa);
-	sa.sa_handler = terminate;
-	sigaction(SIGINT, &sa, NULL);
-	sigaction(SIGTERM, &sa, NULL);
-	sa.sa_flags |= SA_RESTART;
+	Signal(SIGINT, terminate);
+	Signal(SIGTERM, terminate);
 
 	nsigs = install_signal_handlers();
 
@@ -433,13 +361,12 @@ int main(int argc, char *argv[])
 	/* Wait for signals to create single-update threads */
 	while (!done) {
 		process_signals(nsigs);
-		pause();
+		Pause();
 	}
 
 	if (!to_stdout) {
-		XStoreName(dpy, DefaultRootWindow(dpy), NULL);
-		if (XCloseDisplay(dpy) < 0)
-			die("XCloseDisplay: Failed to close display");
+		xStoreName(dpy, DefaultRootWindow(dpy), NULL);
+		xCloseDisplay(dpy);
 	}
 
 	return EXIT_SUCCESS;
