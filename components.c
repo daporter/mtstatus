@@ -38,9 +38,8 @@ static bool run_cmd(char *buf, const char *cmd)
 	return true;
 }
 
-void notmuch(char *buf, const int bufsize, const char *args)
+void notmuch(char *buf, const int bufsize, const char *unused(args))
 {
-	UNUSED(args);
 	char output[bufsize];
 	long count;
 
@@ -63,9 +62,8 @@ void notmuch(char *buf, const int bufsize, const char *args)
 		Snprintf(buf, bufsize, "  %ld", count);
 }
 
-void load_avg(char *buf, const int bufsize, const char *args)
+void load_avg(char *buf, const int bufsize, const char *unused(args))
 {
-	UNUSED(args);
 	double avgs[1];
 	char output[bufsize];
 
@@ -79,9 +77,8 @@ void load_avg(char *buf, const int bufsize, const char *args)
 	Snprintf(buf, bufsize, "  %s", output);
 }
 
-void ram_free(char *buf, const int bufsize, const char *args)
+void ram_free(char *buf, const int bufsize, const char *unused(args))
 {
-	UNUSED(args);
 	const char meminfo[] = "/proc/meminfo";
 	FILE *fp;
 	char total_str[bufsize], free_str[bufsize];

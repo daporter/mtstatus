@@ -41,10 +41,8 @@ static volatile sig_atomic_t done;
  */
 static volatile sig_atomic_t *signals_received;
 
-static void terminate(const int signum)
+static void terminate(const int unused(signum))
 {
-	UNUSED(signum);
-
 	done = true;
 }
 

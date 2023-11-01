@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #define LEN(x)	  (sizeof(x) / sizeof((x)[0]))
-#define UNUSED(x) (void)(x)
+#define unused(x) x##_unused __attribute__((unused))
 #define K_SI	  1000
 #define K_IEC	  1024
 
