@@ -24,14 +24,6 @@ struct targ_status {
 	Display *dpy;
 };
 
-/* Argument passed to a single-update thread */
-struct targ_updater {
-	struct component component;
-	unsigned posn;
-};
-
-#define UNUSED(x) UNUSED_##x __attribute__((__unused__))
-
 /* Each thread writes to its own output buffer */
 static char component_bufs[NCOMPONENTS][MAX_COMP_LEN];
 static pthread_mutex_t bufs_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -40,8 +32,6 @@ static pthread_cond_t is_updated_cond = PTHREAD_COND_INITIALIZER;
 
 static_assert(sizeof(no_val_str) <= sizeof(component_bufs[0]),
 	      "no_val_str must be no bigger than component_buf");
-static_assert(sizeof(divider) <= sizeof(component_bufs[0]),
-	      "divider must be no bigger than component_buf");
 
 static volatile sig_atomic_t done;
 
@@ -51,8 +41,10 @@ static volatile sig_atomic_t done;
  */
 static volatile sig_atomic_t *signals_received;
 
-static void terminate(const int UNUSED(signum))
+static void terminate(const int signum)
 {
+	UNUSED(signum);
+
 	done = true;
 }
 
@@ -85,7 +77,7 @@ static void *thread_print_status(void *arg)
 	Display *dpy;
 	int n;
 	size_t i, len;
-	char status[sizeof component_bufs];
+	char status[NCOMPONENTS * MAX_COMP_LEN];
 
 	/* Unpack arg */
 	to_stdout = ((struct targ_status *)arg)->to_stdout;
@@ -120,29 +112,23 @@ static void *thread_print_status(void *arg)
 
 static void *thread_upd_repeating(void *arg)
 {
-	void (*update)(char *);
-	unsigned nsecs, posn;
+	size_t posn = (size_t)arg;
+	struct component c = components[posn];
 	char buf[MAX_COMP_LEN];
-
-	/* Unpack arg */
-	update = ((struct targ_updater *)arg)->component.update;
-	nsecs = ((struct targ_updater *)arg)->component.sleep_secs;
-	posn = ((struct targ_updater *)arg)->posn;
-	Free(arg);
 
 	Pthread_detach(Pthread_self());
 
 	/* Component-update loop */
 	while (true) {
-		update(buf);
+		c.update(buf, LEN(buf), c.args);
 		Pthread_mutex_lock(&bufs_mutex);
-		static_assert(sizeof(component_bufs[posn]) >= sizeof(buf),
+		static_assert(LEN(component_bufs[posn]) >= LEN(buf),
 			      "component_buf must be at least as large as buf");
-		memcpy(component_bufs[posn], buf, sizeof buf);
+		memcpy(component_bufs[posn], buf, LEN(buf));
 		is_updated = true;
 		Pthread_mutex_unlock(&bufs_mutex);
 		Pthread_cond_signal(&is_updated_cond);
-		Sleep(nsecs);
+		Sleep(c.sleep_secs);
 	}
 
 	return NULL;
@@ -150,22 +136,17 @@ static void *thread_upd_repeating(void *arg)
 
 static void *thread_upd_single(void *arg)
 {
-	void (*update)(char *);
-	unsigned posn;
+	size_t posn = (size_t)arg;
+	struct component c = components[posn];
 	char buf[MAX_COMP_LEN];
-
-	/* Unpack arg */
-	update = ((struct targ_updater *)arg)->component.update;
-	posn = ((struct targ_updater *)arg)->posn;
-	Free(arg);
 
 	Pthread_detach(Pthread_self());
 
-	update(buf);
+	c.update(buf, LEN(buf), c.args);
 	Pthread_mutex_lock(&bufs_mutex);
-	static_assert(sizeof(component_bufs[posn]) >= sizeof(buf),
+	static_assert(LEN(component_bufs[posn]) >= LEN(buf),
 		      "component_buf must be at least as large as buf");
-	Memcpy(component_bufs[posn], buf, sizeof buf);
+	Memcpy(component_bufs[posn], buf, LEN(buf));
 	is_updated = true;
 	Pthread_mutex_unlock(&bufs_mutex);
 	Pthread_cond_signal(&is_updated_cond);
@@ -192,38 +173,24 @@ static void create_thread_print_status(bool to_stdout, Display *dpy)
  */
 static void create_threads_repeating(void)
 {
-	struct targ_updater *arg;
 	pthread_t tid;
 
-	for (size_t i = 0; i < NCOMPONENTS; i++) {
+	for (size_t i = 0; i < NCOMPONENTS; i++)
 		/* Is it a repeating component? */
-		if (components[i].sleep_secs >= 0) {
-			arg = Malloc(sizeof *arg);
-			arg->component = components[i];
-			arg->posn = i;
-
-			/* Assume the thread routine frees arg */
-			Pthread_create(&tid, NULL, thread_upd_repeating, arg);
-		}
-	}
+		if (components[i].sleep_secs >= 0)
+			Pthread_create(&tid, NULL, thread_upd_repeating,
+				       (void *)i);
 }
 
 static void create_threads_single(const int signum)
 {
-	struct targ_updater *arg;
 	pthread_t tid;
 
 	/* Find components that specify this signal */
-	for (size_t i = 0; i < NCOMPONENTS; i++) {
-		if (components[i].signum == signum) {
-			arg = Malloc(sizeof *arg);
-			arg->component = components[i];
-			arg->posn = i;
-
-			/* Assume the thread routine frees arg */
-			Pthread_create(&tid, NULL, thread_upd_single, arg);
-		}
-	}
+	for (size_t i = 0; i < NCOMPONENTS; i++)
+		if (components[i].signum == signum)
+			Pthread_create(&tid, NULL, thread_upd_single,
+				       (void *)i);
 }
 
 static void process_signals(const int nsigs)

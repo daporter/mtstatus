@@ -1,19 +1,20 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include "components.h"
+typedef void (*updater_t)(char *, const int, const char *);
 
 /* A status bar component */
 struct component {
-	void (*update)(char *);
-	int sleep_secs;
-	int signum;
+	const updater_t update;
+	const char *args;
+	const int sleep_secs;
+	const int signum;
 };
 
 #define MAX_COMP_LEN 128
 #define NCOMPONENTS  ((sizeof components) / (sizeof(struct component)))
 
-static const char divider[] = "  |  ";
+static const char divider[] = "  ";
 static const char no_val_str[] = "n/a";
 
 /* The components that make up the status bar.
@@ -31,16 +32,16 @@ static const char no_val_str[] = "n/a";
  * (SIGRTMIN + 1) refers to the second realtime signal.
  */
 static const struct component components[] = {
-	/* function, sleep, signal */
+	/* function, arguments, sleep, signal */
 	/* keyboard indicators */
-	/* mail */
+	/* { notmuch, "", -1, 0 }, */
 	/* network traffic */
-	{ load_avg, 2, -1 },
-	{ ram_free, 2, -1 },
-	{ disk_free, 15, -1 },
+	{ load_avg, NULL, 2, -1 },
+	{ ram_free, NULL, 2, -1 },
+	{ disk_free, "/", 15, -1 },
 	/* volume */
 	/* wifi */
-	{ datetime, 30, -1 },
+	{ datetime, "%a %d %b %R", 30, -1 },
 
 };
 

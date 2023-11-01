@@ -10,37 +10,35 @@
 #include "errors.h"
 #include "util.h"
 
-void datetime(char *buf)
+void load_avg(char *buf, const int bufsize, const char *args)
 {
-	time_t t;
-	struct tm now;
+	UNUSED(args);
+	double avgs[1];
+	char output[bufsize];
 
-	if ((t = time(NULL)) == -1) {
-		unix_warn("[datetime] Unable to obtain the current time");
-		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
+	if (getloadavg(avgs, 1) < 0) {
+		unix_warn("[load_avg] Failed to obtain load average");
+		Snprintf(buf, bufsize, "%s", no_val_str);
 		return;
 	}
-	if (localtime_r(&t, &now) == NULL) {
-		unix_warn("[datetime] Unable to determine local time");
-		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
-		return;
-	}
-	if (strftime(buf, MAX_COMP_LEN, "  %a %d %b %R", &now) == 0)
-		unix_warn("[datetime] Unable to format time");
+
+	Snprintf(output, LEN(output), "%.2f", avgs[0]);
+	Snprintf(buf, bufsize, "  %s", output);
 }
 
-void ram_free(char *buf)
+void ram_free(char *buf, const int bufsize, const char *args)
 {
-	assert(buf != NULL);
-
+	UNUSED(args);
 	const char meminfo[] = "/proc/meminfo";
 	FILE *fp;
-	char total_str[MAX_COMP_LEN], free_str[MAX_COMP_LEN];
+	char total_str[bufsize], free_str[bufsize];
 	uintmax_t free;
+
+	assert(buf != NULL);
 
 	if ((fp = fopen(meminfo, "r")) == NULL) {
 		unix_warn("[ram_free] Unable to open %s", meminfo);
-		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
+		Snprintf(buf, bufsize, "%s", no_val_str);
 		return;
 	}
 	if (fscanf(fp,
@@ -48,7 +46,7 @@ void ram_free(char *buf)
 		   "MemFree: %s kB\n",
 		   total_str, free_str) == EOF) {
 		unix_warn("[ram_free] Unable to parse %s", meminfo);
-		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
+		Snprintf(buf, bufsize, "%s", no_val_str);
 		Fclose(fp);
 		return;
 	}
@@ -57,39 +55,46 @@ void ram_free(char *buf)
 	if ((free = strtoumax(free_str, NULL, 0)) == 0 || free == INTMAX_MAX ||
 	    free == UINTMAX_MAX) {
 		app_warn("[ram_free] Unable to convert value %s", free_str);
-		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
+		Snprintf(buf, bufsize, "%s", no_val_str);
 		return;
 	}
 
 	fmt_human(free_str, LEN(free_str), free * K_IEC, K_IEC);
-	Snprintf(buf, MAX_COMP_LEN, "  %s", free_str);
+	Snprintf(buf, bufsize, "  %s", free_str);
 }
 
-void disk_free(char *buf)
+void disk_free(char *buf, const int bufsize, const char *path)
 {
-	const char path[] = "/";
 	struct statvfs fs;
-	char free_str[MAX_COMP_LEN];
+	char output[bufsize];
 
 	if (statvfs(path, &fs) < 0) {
 		unix_warn("[disk_free] statvfs '%s':", path);
-		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
+		Snprintf(buf, bufsize, "%s", no_val_str);
 		return;
 	}
 
-	fmt_human(free_str, MAX_COMP_LEN, fs.f_frsize * fs.f_bavail, K_IEC);
-	Snprintf(buf, MAX_COMP_LEN, "󰋊 %s", free_str);
+	fmt_human(output, LEN(output), fs.f_frsize * fs.f_bavail, K_IEC);
+	Snprintf(buf, bufsize, "󰋊 %s", output);
 }
 
-void load_avg(char *buf)
+void datetime(char *buf, const int bufsize, const char *date_fmt)
 {
-	double avgs[1];
+	time_t t;
+	struct tm now;
+	char output[bufsize];
 
-	if (getloadavg(avgs, 1) < 0) {
-		unix_warn("[load_avg] Failed to obtain load average");
-		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
+	if ((t = time(NULL)) == -1) {
+		unix_warn("[datetime] Unable to obtain the current time");
+		Snprintf(buf, bufsize, "%s", no_val_str);
 		return;
 	}
-
-	Snprintf(buf, MAX_COMP_LEN, "  %.2f", avgs[0]);
+	if (localtime_r(&t, &now) == NULL) {
+		unix_warn("[datetime] Unable to determine local time");
+		Snprintf(buf, bufsize, "%s", no_val_str);
+		return;
+	}
+	if (strftime(output, LEN(output), date_fmt, &now) == 0)
+		unix_warn("[datetime] Unable to format time");
+	Snprintf(buf, bufsize, "  %s", output);
 }
