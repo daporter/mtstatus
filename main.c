@@ -27,11 +27,9 @@ struct targ_status {
 /* Each thread writes to its own output buffer */
 static char component_bufs[NCOMPONENTS][MAX_COMP_LEN];
 static pthread_mutex_t bufs_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static bool is_updated = false;
 static pthread_cond_t is_updated_cond = PTHREAD_COND_INITIALIZER;
-
-static_assert(sizeof(no_val_str) <= sizeof(component_bufs[0]),
-	      "no_val_str must be no bigger than component_buf");
 
 static volatile sig_atomic_t done;
 

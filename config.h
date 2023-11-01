@@ -1,6 +1,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <assert.h>
+
 typedef void (*updater_t)(char *, const int, const char *);
 
 /* A status bar component */
@@ -15,7 +17,12 @@ struct component {
 #define NCOMPONENTS  ((sizeof components) / (sizeof(struct component)))
 
 static const char divider[] = "  ";
+static_assert(sizeof(divider) <= MAX_COMP_LEN,
+	      "no_val_str must be no bigger than component length");
+
 static const char no_val_str[] = "n/a";
+static_assert(sizeof(no_val_str) <= MAX_COMP_LEN,
+	      "no_val_str must be no bigger than component length");
 
 /* The components that make up the status bar.
 
@@ -31,6 +38,7 @@ static const char no_val_str[] = "n/a";
  * referred to by adding a value to SIGRTMIN; for example, the expression
  * (SIGRTMIN + 1) refers to the second realtime signal.
  */
+
 static const struct component components[] = {
 	/* function, arguments, sleep, signal */
 	/* keyboard indicators */
@@ -42,7 +50,6 @@ static const struct component components[] = {
 	/* volume */
 	/* wifi */
 	{ datetime, "%a %d %b %R", 30, -1 },
-
 };
 
 #endif
