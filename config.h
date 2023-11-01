@@ -30,7 +30,11 @@ struct component {
 static const struct component components[] = {
 	/* function, sleep, signal */
 	{ ram_free, 2, -1 },
+	{ disk_free, 15, -1 },
 	{ datetime, 30, -1 },
 };
+
+static const char no_val_str[] = "n/a";
+static const char divider[] = "  |  ";
 
 #endif

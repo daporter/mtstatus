@@ -38,11 +38,8 @@ static pthread_mutex_t bufs_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool is_updated = false;
 static pthread_cond_t is_updated_cond = PTHREAD_COND_INITIALIZER;
 
-const char no_val_str[] = "n/a";
 static_assert(sizeof(no_val_str) <= sizeof(component_bufs[0]),
 	      "no_val_str must be no bigger than component_buf");
-
-static const char divider[] = "  |  ";
 static_assert(sizeof(divider) <= sizeof(component_bufs[0]),
 	      "divider must be no bigger than component_buf");
 

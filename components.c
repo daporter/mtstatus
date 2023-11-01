@@ -3,12 +3,11 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <stdint.h>
+#include <sys/statvfs.h>
 
 #include "config.h"
 #include "errors.h"
 #include "util.h"
-
-extern const char no_val_str;
 
 void datetime(char *buf)
 {
@@ -63,4 +62,20 @@ void ram_free(char *buf)
 
 	fmt_human(free_str, LEN(free_str), free * K_IEC, K_IEC);
 	Snprintf(buf, MAX_COMP_LEN, "  %s", free_str);
+}
+
+void disk_free(char *buf)
+{
+	const char path[] = "/";
+	struct statvfs fs;
+	char free_str[MAX_COMP_LEN];
+
+	if (statvfs(path, &fs) < 0) {
+		unix_warn("[disk_free] statvfs '%s':", path);
+		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
+		return;
+	}
+
+	fmt_human(free_str, MAX_COMP_LEN, fs.f_frsize * fs.f_bavail, K_IEC);
+	Snprintf(buf, MAX_COMP_LEN, "󰋊 %s", free_str);
 }
