@@ -155,9 +155,9 @@ static void *thread_upd_single(void *arg)
 }
 
 /*
- * Create the thread for printing the status bar
+ * Create the thread for printing the status bar.
  */
-static void create_thread_print_status(bool to_stdout, Display *dpy)
+static void create_thread_print_status(Display *dpy, bool to_stdout)
 {
 	struct targ_status *arg;
 	pthread_t tid;
@@ -179,6 +179,29 @@ static void create_threads_repeating(void)
 		/* Is it a repeating component? */
 		if (components[i].sleep_secs >= 0)
 			Pthread_create(&tid, NULL, thread_upd_repeating,
+				       (void *)i);
+}
+
+/*
+ * Determine whether the component at position ‘posn’ is signal-only.
+ */
+static bool is_signal_only(const size_t posn)
+{
+	struct component c = components[posn];
+
+	return c.sleep_secs < 0 && c.signum >= 0;
+}
+
+/*
+ * Create threads for running signal-only updaters once to get an initial value.
+ */
+static void create_threads_sig_only_initial(void)
+{
+	pthread_t tid;
+
+	for (size_t i = 0; i < NCOMPONENTS; i++)
+		if (is_signal_only(i))
+			Pthread_create(&tid, NULL, thread_upd_single,
 				       (void *)i);
 }
 
@@ -228,12 +251,12 @@ int main(int argc, char *argv[])
 	Signal(SIGINT, terminate);
 	Signal(SIGTERM, terminate);
 
-	nsigs = install_signal_handlers();
-
-	create_thread_print_status(to_stdout, dpy);
 	create_threads_repeating();
+	create_threads_sig_only_initial();
+	create_thread_print_status(dpy, to_stdout);
 
 	/* Wait for signals to create single-update threads */
+	nsigs = install_signal_handlers();
 	while (!done) {
 		process_signals(nsigs);
 		Pause();
