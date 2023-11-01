@@ -13,6 +13,9 @@ struct component {
 #define MAX_COMP_LEN 128
 #define NCOMPONENTS  ((sizeof components) / (sizeof(struct component)))
 
+static const char divider[] = "  |  ";
+static const char no_val_str[] = "n/a";
+
 /* The components that make up the status bar.
 
    Each element consists of an updater function and a sleep interval (in
@@ -29,12 +32,16 @@ struct component {
  */
 static const struct component components[] = {
 	/* function, sleep, signal */
+	/* keyboard indicators */
+	/* mail */
+	/* network traffic */
+	{ load_avg, 2, -1 },
 	{ ram_free, 2, -1 },
 	{ disk_free, 15, -1 },
+	/* volume */
+	/* wifi */
 	{ datetime, 30, -1 },
-};
 
-static const char no_val_str[] = "n/a";
-static const char divider[] = "  |  ";
+};
 
 #endif

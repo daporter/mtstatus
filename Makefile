@@ -1,11 +1,11 @@
-CFLAGS = -pthread -Og -g3 -Wall -Wextra -pedantic -Werror
+CFLAGS = -pedantic -pthread -Og -g3 -Wall -Wextra -Werror
 LDLIBS = -lX11
 BIN    = sbar
 
 # TODO: add a release mode that disables assertions, etc.
 
-SRCS   = $(wildcard *.c)
-OBJS   = $(SRCS:.c=.o)
+SRCS = $(wildcard *.c)
+OBJS = $(SRCS:.c=.o)
 
 .PHONY: all
 all:    sbar

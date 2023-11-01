@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <sys/statvfs.h>
 
 #include "config.h"
@@ -78,4 +79,17 @@ void disk_free(char *buf)
 
 	fmt_human(free_str, MAX_COMP_LEN, fs.f_frsize * fs.f_bavail, K_IEC);
 	Snprintf(buf, MAX_COMP_LEN, "󰋊 %s", free_str);
+}
+
+void load_avg(char *buf)
+{
+	double avgs[1];
+
+	if (getloadavg(avgs, 1) < 0) {
+		unix_warn("[load_avg] Failed to obtain load average");
+		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
+		return;
+	}
+
+	Snprintf(buf, MAX_COMP_LEN, "  %.2f", avgs[0]);
 }
