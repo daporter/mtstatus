@@ -13,7 +13,9 @@ all:    sbar
 $(BIN): $(OBJS)
 	$(CC) $(CFLAGS) $(LDLIBS) -o $@ $^
 
-main.o: util.h errors.h
+components.o: components.h config.h errors.h util.h
+errors.o: errors.h
+main.o: components.h config.h errors.h util.h
 util.o: util.h errors.h
 
 .PHONY: clean

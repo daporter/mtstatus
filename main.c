@@ -1,53 +1,22 @@
 /* TODO:
  * - Add more component functions (see ‘syscalls(2) manpage’).
- * - Use config.h.
  * - Add debugging output.
  * - Refactor duplicated code.
  */
 
 #include <assert.h>
-#include <inttypes.h>
 #include <signal.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
 
+#include "components.h"
+#include "config.h"
 #include "errors.h"
 #include "util.h"
-
-static void ram_free(char *buf);
-static void datetime(char *buf);
-
-/* A status bar component */
-struct component {
-	void (*update)(char *);
-	int sleep_secs;
-	int signum;
-};
-
-/* The components that make up the status bar.
-
-   Each element consists of an updater function and a sleep interval (in
-   seconds).  The order of the elements defines the order of components in the
-   status bar. */
-
-/*
- * Realtime signals are not individually identified by different constants in
- * the manner of standard signals. However, an application should not hard-code
- * integer values for them, since the range used for realtime signals varies
- * across UNIX implementations. Instead, a realtime signal number can be
- * referred to by adding a value to SIGRTMIN; for example, the expression
- * (SIGRTMIN + 1) refers to the second realtime signal.
- */
-static const struct component components[] = {
-	/* function, sleep, signal */
-	{ ram_free, 2, -1 },
-	{ datetime, 30, -1 },
-};
 
 /* Argument passed to the print-status thread */
 struct targ_status {
@@ -61,9 +30,6 @@ struct targ_updater {
 	unsigned posn;
 };
 
-#define NCOMPONENTS  ((sizeof components) / (sizeof(struct component)))
-#define MAX_COMP_LEN 128
-
 #define UNUSED(x) UNUSED_##x __attribute__((__unused__))
 
 /* Each thread writes to its own output buffer */
@@ -72,7 +38,7 @@ static pthread_mutex_t bufs_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool is_updated = false;
 static pthread_cond_t is_updated_cond = PTHREAD_COND_INITIALIZER;
 
-static const char no_val_str[] = "n/a";
+const char no_val_str[] = "n/a";
 static_assert(sizeof(no_val_str) <= sizeof(component_bufs[0]),
 	      "no_val_str must be no bigger than component_buf");
 
@@ -87,61 +53,6 @@ static volatile sig_atomic_t done;
    processed.  Set by the signal handler.
  */
 static volatile sig_atomic_t *signals_received;
-
-static void datetime(char *buf)
-{
-	time_t t;
-	struct tm now;
-
-	if ((t = time(NULL)) == -1) {
-		unix_warn("[datetime] Unable to obtain the current time");
-		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
-		return;
-	}
-	if (localtime_r(&t, &now) == NULL) {
-		unix_warn("[datetime] Unable to determine local time");
-		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
-		return;
-	}
-	if (strftime(buf, MAX_COMP_LEN, "  %a %d %b %R", &now) == 0)
-		unix_warn("[datetime] Unable to format time");
-}
-
-static void ram_free(char *buf)
-{
-	assert(buf != NULL);
-
-	const char meminfo[] = "/proc/meminfo";
-	FILE *fp;
-	char total_str[MAX_COMP_LEN], free_str[MAX_COMP_LEN];
-	uintmax_t free;
-
-	if ((fp = fopen(meminfo, "r")) == NULL) {
-		unix_warn("[ram_free] Unable to open %s", meminfo);
-		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
-		return;
-	}
-	if (fscanf(fp,
-		   "MemTotal: %s kB\n"
-		   "MemFree: %s kB\n",
-		   total_str, free_str) == EOF) {
-		unix_warn("[ram_free] Unable to parse %s", meminfo);
-		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
-		Fclose(fp);
-		return;
-	}
-	Fclose(fp);
-
-	if ((free = strtoumax(free_str, NULL, 0)) == 0 || free == INTMAX_MAX ||
-	    free == UINTMAX_MAX) {
-		app_warn("[ram_free] Unable to convert value %s", free_str);
-		Snprintf(buf, MAX_COMP_LEN, "%s", no_val_str);
-		return;
-	}
-
-	fmt_human(free_str, LEN(free_str), free * K_IEC, K_IEC);
-	Snprintf(buf, MAX_COMP_LEN, "  %s", free_str);
-}
 
 static void terminate(const int UNUSED(signum))
 {
