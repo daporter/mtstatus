@@ -34,7 +34,7 @@ static const char no_val_str[] = "n/a";
 static const struct component components[] = {
 	/* function, arguments, sleep, signal */
 	/* keyboard indicators */
-	/* { notmuch, "", -1, 0 }, */
+	{ notmuch, NULL, -1, 0 },
 	/* network traffic */
 	{ load_avg, NULL, 2, -1 },
 	{ ram_free, NULL, 2, -1 },

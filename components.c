@@ -1,14 +1,67 @@
 #include "components.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <inttypes.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/statvfs.h>
 
 #include "config.h"
 #include "errors.h"
 #include "util.h"
+
+static bool run_cmd(char *buf, const char *cmd)
+{
+	char *p;
+	FILE *fp;
+
+	if (!(fp = popen(cmd, "r"))) { /* NOLINT(cert-env33-c)*/
+		unix_warn("popen '%s':", cmd);
+		return false;
+	}
+
+	p = fgets(buf, sizeof(buf) - 1, fp);
+	if (pclose(fp) < 0) {
+		unix_warn("pclose '%s':", cmd);
+		return false;
+	}
+	if (!p)
+		return false;
+
+	if ((p = strrchr(buf, '\n')))
+		p[0] = '\0';
+
+	return true;
+}
+
+void notmuch(char *buf, const int bufsize, const char *args)
+{
+	UNUSED(args);
+	char output[bufsize];
+	long count;
+
+	if (!run_cmd(output, "notmuch count 'tag:unread NOT tag:archived'")) {
+		unix_warn("[notmuch] Failed to run notmuch command");
+		Snprintf(buf, bufsize, "  %s", no_val_str);
+		return;
+	}
+
+	errno = 0; /* To distinguish success/failure after call */
+	count = strtol(output, NULL, 0);
+	if (errno != 0) {
+		unix_warn("[notmuch] Failed to convert command output");
+		Snprintf(buf, bufsize, "  %s", no_val_str);
+		return;
+	}
+	if (count == 0)
+		Snprintf(buf, bufsize, "  %ld", count);
+	else
+		Snprintf(buf, bufsize, "  %ld", count);
+}
 
 void load_avg(char *buf, const int bufsize, const char *args)
 {
@@ -18,7 +71,7 @@ void load_avg(char *buf, const int bufsize, const char *args)
 
 	if (getloadavg(avgs, 1) < 0) {
 		unix_warn("[load_avg] Failed to obtain load average");
-		Snprintf(buf, bufsize, "%s", no_val_str);
+		Snprintf(buf, bufsize, "  %s", no_val_str);
 		return;
 	}
 
@@ -38,7 +91,7 @@ void ram_free(char *buf, const int bufsize, const char *args)
 
 	if ((fp = fopen(meminfo, "r")) == NULL) {
 		unix_warn("[ram_free] Unable to open %s", meminfo);
-		Snprintf(buf, bufsize, "%s", no_val_str);
+		Snprintf(buf, bufsize, "  %s", no_val_str);
 		return;
 	}
 	if (fscanf(fp,
@@ -46,7 +99,7 @@ void ram_free(char *buf, const int bufsize, const char *args)
 		   "MemFree: %s kB\n",
 		   total_str, free_str) == EOF) {
 		unix_warn("[ram_free] Unable to parse %s", meminfo);
-		Snprintf(buf, bufsize, "%s", no_val_str);
+		Snprintf(buf, bufsize, "  %s", no_val_str);
 		Fclose(fp);
 		return;
 	}
@@ -55,7 +108,7 @@ void ram_free(char *buf, const int bufsize, const char *args)
 	if ((free = strtoumax(free_str, NULL, 0)) == 0 || free == INTMAX_MAX ||
 	    free == UINTMAX_MAX) {
 		app_warn("[ram_free] Unable to convert value %s", free_str);
-		Snprintf(buf, bufsize, "%s", no_val_str);
+		Snprintf(buf, bufsize, "  %s", no_val_str);
 		return;
 	}
 
@@ -70,7 +123,7 @@ void disk_free(char *buf, const int bufsize, const char *path)
 
 	if (statvfs(path, &fs) < 0) {
 		unix_warn("[disk_free] statvfs '%s':", path);
-		Snprintf(buf, bufsize, "%s", no_val_str);
+		Snprintf(buf, bufsize, "󰋊 %s", no_val_str);
 		return;
 	}
 
@@ -86,12 +139,12 @@ void datetime(char *buf, const int bufsize, const char *date_fmt)
 
 	if ((t = time(NULL)) == -1) {
 		unix_warn("[datetime] Unable to obtain the current time");
-		Snprintf(buf, bufsize, "%s", no_val_str);
+		Snprintf(buf, bufsize, "  %s", no_val_str);
 		return;
 	}
 	if (localtime_r(&t, &now) == NULL) {
 		unix_warn("[datetime] Unable to determine local time");
-		Snprintf(buf, bufsize, "%s", no_val_str);
+		Snprintf(buf, bufsize, "  %s", no_val_str);
 		return;
 	}
 	if (strftime(output, LEN(output), date_fmt, &now) == 0)
