@@ -1,7 +1,7 @@
-CFLAGS = -pedantic -pthread -Og -g3 -Wall -Wextra -Werror
-LDLIBS = -lX11
-BIN    = sbar
 CPPFLAGS = -D_DEFAULT_SOURCE
+CFLAGS	 = -std=c17 -pedantic -pthread -Og -g3 -Wall -Wextra -Werror -fanalyzer
+LDLIBS	 = -lX11
+BIN	 = sbar
 
 # TODO: add a release mode that disables assertions, etc.
 
