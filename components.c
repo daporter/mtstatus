@@ -1,6 +1,5 @@
 #include "components.h"
 
-#include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdbool.h>
@@ -14,7 +13,7 @@
 #include "errors.h"
 #include "util.h"
 
-static bool run_cmd(char *buf, const char *cmd)
+static bool run_cmd(char *buf, int bufsize, const char *cmd)
 {
 	char *p;
 	FILE *fp;
@@ -24,7 +23,7 @@ static bool run_cmd(char *buf, const char *cmd)
 		return false;
 	}
 
-	p = fgets(buf, sizeof(buf) - 1, fp);
+	p = fgets(buf, bufsize - 1, fp);
 	if (pclose(fp) < 0) {
 		unix_warn("pclose '%s':", cmd);
 		return false;
@@ -38,12 +37,40 @@ static bool run_cmd(char *buf, const char *cmd)
 	return true;
 }
 
+void keyboard_indicators(char *buf, const int bufsize, const char *unused(args))
+{
+	Display *dpy;
+	XKeyboardState state;
+	bool caps_on, numlock_on;
+
+	if (!(dpy = XOpenDisplay(NULL))) {
+		unix_warn("XOpenDisplay: Failed to open display");
+		return;
+	}
+	XGetKeyboardControl(dpy, &state);
+	XCloseDisplay(dpy);
+
+	caps_on = state.led_mask & 1;
+	numlock_on = state.led_mask & 2;
+
+	buf[0] = '\0';
+	if (caps_on) {
+		if (numlock_on)
+			Snprintf(buf, bufsize, "Caps Num");
+		else
+			Snprintf(buf, bufsize, "Caps");
+	} else if (numlock_on)
+		Snprintf(buf, bufsize, "Num");
+}
+
 void notmuch(char *buf, const int bufsize, const char *unused(args))
 {
 	char output[bufsize];
 	long count;
 
-	if (!run_cmd(output, "notmuch count 'tag:unread NOT tag:archived'")) {
+	/* TODO: Do this directly in C */
+	if (!run_cmd(output, bufsize,
+		     "notmuch count 'tag:unread NOT tag:archived'")) {
 		unix_warn("[notmuch] Failed to run notmuch command");
 		Snprintf(buf, bufsize, "  %s", no_val_str);
 		return;
@@ -84,8 +111,6 @@ void ram_free(char *buf, const int bufsize, const char *unused(args))
 	char total_str[bufsize], free_str[bufsize];
 	uintmax_t free;
 
-	assert(buf != NULL);
-
 	if ((fp = fopen(meminfo, "r")) == NULL) {
 		unix_warn("[ram_free] Unable to open %s", meminfo);
 		Snprintf(buf, bufsize, "  %s", no_val_str);
@@ -109,7 +134,7 @@ void ram_free(char *buf, const int bufsize, const char *unused(args))
 		return;
 	}
 
-	fmt_human(free_str, LEN(free_str), free * K_IEC, K_IEC);
+	util_fmt_human(free_str, LEN(free_str), free * K_IEC, K_IEC);
 	Snprintf(buf, bufsize, "  %s", free_str);
 }
 
@@ -124,7 +149,7 @@ void disk_free(char *buf, const int bufsize, const char *path)
 		return;
 	}
 
-	fmt_human(output, LEN(output), fs.f_frsize * fs.f_bavail, K_IEC);
+	util_fmt_human(output, LEN(output), fs.f_frsize * fs.f_bavail, K_IEC);
 	Snprintf(buf, bufsize, "󰋊 %s", output);
 }
 

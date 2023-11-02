@@ -3,6 +3,8 @@
 
 #include <assert.h>
 
+#include "util.h"
+
 typedef void (*updater_t)(char *, const int, const char *);
 
 /* A status bar component */
@@ -17,11 +19,11 @@ struct component {
 #define NCOMPONENTS  ((sizeof components) / (sizeof(struct component)))
 
 static const char divider[] = "  ";
-static_assert(sizeof(divider) <= MAX_COMP_LEN,
+static_assert(LEN(divider) <= MAX_COMP_LEN,
 	      "no_val_str must be no bigger than component length");
 
 static const char no_val_str[] = "n/a";
-static_assert(sizeof(no_val_str) <= MAX_COMP_LEN,
+static_assert(LEN(no_val_str) <= MAX_COMP_LEN,
 	      "no_val_str must be no bigger than component length");
 
 /* The components that make up the status bar.
@@ -39,17 +41,19 @@ static_assert(sizeof(no_val_str) <= MAX_COMP_LEN,
  * (SIGRTMIN + 1) refers to the second realtime signal.
  */
 
+/* clang-format off */
 static const struct component components[] = {
 	/* function, arguments, sleep, signal */
-	/* keyboard indicators */
-	{ notmuch, NULL, -1, 0 },
+	{ keyboard_indicators, NULL, -1,  0 },
+	{ notmuch,	       NULL, -1,  1 },
 	/* network traffic */
-	{ load_avg, NULL, 2, -1 },
-	{ ram_free, NULL, 2, -1 },
-	{ disk_free, "/", 15, -1 },
+	{ load_avg,	       NULL,  2, -1 },
+	{ ram_free,	       NULL,  2, -1 },
+	{ disk_free,	       "/",  15, -1 },
 	/* volume */
 	/* wifi */
-	{ datetime, "%a %d %b %R", 30, -1 },
+	{ datetime, "%a %d %b %R",   30, -1 },
 };
+/* clang-format on */
 
 #endif

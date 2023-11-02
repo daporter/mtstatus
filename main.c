@@ -1,4 +1,5 @@
 /* TODO:
+ * - Add error and warning wrappers for library and system calls.
  * - Add more component functions (see ‘syscalls(2) manpage’).
  * - Add debugging output.
  * - Refactor duplicated code.
@@ -71,8 +72,6 @@ static void *thread_print_status(void *arg)
 {
 	bool to_stdout;
 	Display *dpy;
-	int n;
-	size_t i, len;
 	char status[NCOMPONENTS * MAX_COMP_LEN];
 
 	/* Unpack arg */
@@ -85,12 +84,8 @@ static void *thread_print_status(void *arg)
 		while (!is_updated)
 			Pthread_cond_wait(&is_updated_cond, &bufs_mutex);
 
-		status[0] = '\0';
-		for (i = len = 0; i < NCOMPONENTS - 1; i++, len += n)
-			n = Snprintf(status + len, sizeof status, "%s%s",
-				     component_bufs[i], divider);
-		Snprintf(status + len, sizeof status, "%s", component_bufs[i]);
-
+		util_join_strings(status, LEN(status), divider, NCOMPONENTS,
+				  MAX_COMP_LEN, component_bufs);
 		is_updated = false;
 		Pthread_mutex_unlock(&bufs_mutex);
 
