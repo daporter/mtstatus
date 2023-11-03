@@ -1,0 +1,7 @@
+-xc
+-std=c17
+-pedantic
+-Wall
+-Wextra
+-Werror
+-D_DEFAULT_SOURCE
