@@ -9,11 +9,12 @@
 #include <string.h>
 #include <sys/statvfs.h>
 
-#include "config.h"
 #include "errors.h"
 #include "util.h"
 
-static bool run_cmd(char *buf, int bufsize, const char *cmd)
+const char no_val_str[] = "n/a";
+
+static bool run_cmd(char *buf, const int bufsize, const char *cmd)
 {
 	char *p;
 	FILE *fp;
@@ -68,7 +69,6 @@ void notmuch(char *buf, const int bufsize, const char *unused(args))
 	char output[bufsize];
 	long count;
 
-	/* TODO: Do this directly in C */
 	if (!run_cmd(output, bufsize,
 		     "notmuch count 'tag:unread NOT tag:archived'")) {
 		unix_warn("[notmuch] Failed to run notmuch command");

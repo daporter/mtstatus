@@ -9,8 +9,7 @@
 #define K_SI	  1000
 #define K_IEC	  1024
 
-size_t util_join_strings(char *buf, size_t bufsize, const char *delim,
-			 size_t nstr, size_t slen, char strings[nstr][slen]);
+char *util_cat(char *dest, const char *end, const char *str);
 int util_fmt_human(char *buf, int len, uintmax_t num, int base);
 
 #endif

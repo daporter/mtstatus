@@ -1,6 +1,4 @@
-/*
- * Error-handling functions.
- */
+/* Error-handling functions */
 
 #include "errors.h"
 
@@ -13,9 +11,7 @@
 
 #define BUF_SIZE 500
 
-/*
- * Some standard error handling routines used by various programs.
- */
+/* Some standard error handling routines used by various programs */
 
 static void verr(bool use_err, int err, const char *fmt, va_list ap)
 {
@@ -95,10 +91,7 @@ void app_error(const char *fmt, ...)
 	exit(EXIT_FAILURE);
 }
 
-/*
- * Wrappers for Unix process control functions.
- *
- */
+/* Wrappers for Unix process control functions */
 
 unsigned int Sleep(unsigned int secs)
 {
@@ -110,9 +103,7 @@ void Pause(void)
 	(void)pause();
 }
 
-/*
- * Wrappers for Unix signal functions.
- */
+/* Wrappers for Unix signal functions */
 
 handler_t *Signal(int signum, handler_t *handler)
 {
@@ -127,17 +118,13 @@ handler_t *Signal(int signum, handler_t *handler)
 	return (old_action.sa_handler);
 }
 
-/*
- * Memory mapping wrappers.
- */
+/* Memory mapping wrappers */
 void *Memcpy(void *dest, const void *src, size_t n)
 {
 	return memcpy(dest, src, n);
 }
 
-/*
- * Wrappers for dynamic storage allocation functions.
-*/
+/* Wrappers for dynamic storage allocation functions */
 
 void *Malloc(size_t size)
 {
@@ -162,9 +149,7 @@ void Free(void *ptr)
 	free(ptr);
 }
 
-/*
- * Wrappers for the Standard I/O functions.
-*/
+/* Wrappers for the Standard I/O functions */
 
 FILE *Fopen(const char *filename, const char *mode)
 {
@@ -215,9 +200,7 @@ int Snprintf(char *str, size_t size, const char *fmt, ...)
 	return ret;
 }
 
-/*
- * Wrappers for Pthreads thread control functions.
-*/
+/* Wrappers for Pthreads thread control functions */
 
 void Pthread_create(pthread_t *tidp, pthread_attr_t *attrp,
 		    void *(*routine)(void *), void *argp)
@@ -226,6 +209,14 @@ void Pthread_create(pthread_t *tidp, pthread_attr_t *attrp,
 
 	if ((rc = pthread_create(tidp, attrp, routine, argp)) != 0)
 		posix_error(rc, "Pthread_create error");
+}
+
+void Pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
+{
+	int rc;
+
+	if ((rc = pthread_mutex_init(mutex, attr)) != 0)
+		posix_error(rc, "Pthread_mutex_init");
 }
 
 void Pthread_mutex_lock(pthread_mutex_t *mutex)
@@ -242,6 +233,14 @@ void Pthread_mutex_unlock(pthread_mutex_t *mutex)
 
 	if ((rc = pthread_mutex_unlock(mutex)) != 0)
 		posix_error(rc, "Pthread_mutex_unlock");
+}
+
+void Pthread_cond_init(pthread_cond_t *cond, pthread_condattr_t *attr)
+{
+	int rc;
+
+	if ((rc = pthread_cond_init(cond, attr)) != 0)
+		posix_error(rc, "Pthread_cond_init");
 }
 
 void Pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex)
@@ -273,9 +272,8 @@ pthread_t Pthread_self(void)
 	return pthread_self();
 }
 
-/*
- * Wrappers for XLIB functions.
- */
+/* Wrappers for XLIB functions */
+
 Display *xOpenDisplay(_Xconst char *display_name)
 {
 	Display *display;

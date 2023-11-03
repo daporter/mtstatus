@@ -1,9 +1,8 @@
 /* TODO:
- * - Add error and warning wrappers for library and system calls.
- * - Add more component functions (see ‘syscalls(2) manpage’).
- * - Add debugging output.
- * - Refactor duplicated code.
- */
+   - Add error and warning wrappers for library and system calls.
+   - Add more component functions (see ‘syscalls(2) manpage’).
+   - Add debugging output.
+   - Refactor duplicated code. */
 
 #include <assert.h>
 #include <signal.h>
@@ -15,9 +14,48 @@
 #include <unistd.h>
 
 #include "components.h"
-#include "config.h"
 #include "errors.h"
+#include "status_bar.h"
 #include "util.h"
+
+#define MAX_COMP_SIZE 128
+#define N_COMPONENTS  ((sizeof components) / (sizeof(component_t)))
+
+const char divider[] = "  ";
+static_assert(LEN(divider) <= MAX_COMP_SIZE,
+	      "divider must be no bigger than component length");
+
+/* The components that make up the status bar.
+
+   Each element consists of an updater function and a sleep interval (in
+   seconds).  The order of the elements defines the order of components in the
+   status bar. */
+
+/*
+ * Realtime signals are not individually identified by different constants in
+ * the manner of standard signals. However, an application should not hard-code
+ * integer values for them, since the range used for realtime signals varies
+ * across UNIX implementations. Instead, a realtime signal number can be
+ * referred to by adding a value to SIGRTMIN; for example, the expression
+ * (SIGRTMIN + 1) refers to the second realtime signal.
+ */
+
+/* clang-format off */
+component_t components[] = {
+	/* function, arguments, sleep, signal */
+	{ keyboard_indicators, NULL, -1,  0 },
+	{ notmuch,	       NULL, -1,  1 },
+	/* network traffic */
+	{ load_avg,	       NULL,  2, -1 },
+	{ ram_free,	       NULL,  2, -1 },
+	{ disk_free,	       "/",  15, -1 },
+	/* volume */
+	/* wifi */
+	{ datetime, "%a %d %b %R",   30, -1 },
+};
+/* clang-format on */
+
+status_bar_t *status_bar;
 
 /* Argument passed to the print-status thread */
 struct targ_status {
@@ -25,19 +63,10 @@ struct targ_status {
 	Display *dpy;
 };
 
-/* Each thread writes to its own output buffer */
-static char component_bufs[NCOMPONENTS][MAX_COMP_LEN];
-static pthread_mutex_t bufs_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-static bool is_updated = false;
-static pthread_cond_t is_updated_cond = PTHREAD_COND_INITIALIZER;
-
 static volatile sig_atomic_t done;
 
-/*
- * Array of flags indicating which signals have been received and not yet
-   processed.  Set by the signal handler.
- */
+/* Array of flags indicating which signals have been received and not yet
+   processed.  Set by the signal handler. */
 static volatile sig_atomic_t *signals_received;
 
 static void terminate(const int unused(signum))
@@ -55,7 +84,7 @@ static int install_signal_handlers(void)
 	int signum;
 	int nsigs = 0;
 
-	for (size_t i = 0; i < NCOMPONENTS; i++) {
+	for (size_t i = 0; i < N_COMPONENTS; i++) {
 		signum = components[i].signum;
 		if (signum >= 0) {
 			Signal(SIGRTMIN + signum, flag_signal);
@@ -72,22 +101,17 @@ static void *thread_print_status(void *arg)
 {
 	bool to_stdout;
 	Display *dpy;
-	char status[NCOMPONENTS * MAX_COMP_LEN];
+	char status[N_COMPONENTS * MAX_COMP_SIZE];
 
 	/* Unpack arg */
 	to_stdout = ((struct targ_status *)arg)->to_stdout;
 	dpy = ((struct targ_status *)arg)->dpy;
 	Free(arg);
 
-	while (true) {
-		Pthread_mutex_lock(&bufs_mutex);
-		while (!is_updated)
-			Pthread_cond_wait(&is_updated_cond, &bufs_mutex);
+	Pthread_detach(Pthread_self());
 
-		util_join_strings(status, LEN(status), divider, NCOMPONENTS,
-				  MAX_COMP_LEN, component_bufs);
-		is_updated = false;
-		Pthread_mutex_unlock(&bufs_mutex);
+	while (true) {
+		status_bar_print_on_dirty(status_bar, status, LEN(status));
 
 		if (to_stdout) {
 			Puts(status);
@@ -104,22 +128,12 @@ static void *thread_print_status(void *arg)
 static void *thread_upd_repeating(void *arg)
 {
 	size_t posn = (size_t)arg;
-	struct component c = components[posn];
-	char buf[MAX_COMP_LEN];
 
 	Pthread_detach(Pthread_self());
 
-	/* Component-update loop */
 	while (true) {
-		c.update(buf, LEN(buf), c.args);
-		Pthread_mutex_lock(&bufs_mutex);
-		static_assert(LEN(component_bufs[posn]) >= LEN(buf),
-			      "component_buf must be at least as large as buf");
-		memcpy(component_bufs[posn], buf, LEN(buf));
-		is_updated = true;
-		Pthread_mutex_unlock(&bufs_mutex);
-		Pthread_cond_signal(&is_updated_cond);
-		Sleep(c.sleep_secs);
+		status_bar_component_update(status_bar, posn);
+		Sleep(status_bar_component_get_sleep(status_bar, posn));
 	}
 
 	return NULL;
@@ -128,26 +142,15 @@ static void *thread_upd_repeating(void *arg)
 static void *thread_upd_single(void *arg)
 {
 	size_t posn = (size_t)arg;
-	struct component c = components[posn];
-	char buf[MAX_COMP_LEN];
 
 	Pthread_detach(Pthread_self());
 
-	c.update(buf, LEN(buf), c.args);
-	Pthread_mutex_lock(&bufs_mutex);
-	static_assert(LEN(component_bufs[posn]) >= LEN(buf),
-		      "component_buf must be at least as large as buf");
-	Memcpy(component_bufs[posn], buf, LEN(buf));
-	is_updated = true;
-	Pthread_mutex_unlock(&bufs_mutex);
-	Pthread_cond_signal(&is_updated_cond);
+	status_bar_component_update(status_bar, posn);
 
 	return NULL;
 }
 
-/*
- * Create the thread for printing the status bar.
- */
+/* Create the thread for printing the status bar */
 static void create_thread_print_status(Display *dpy, bool to_stdout)
 {
 	struct targ_status *arg;
@@ -159,39 +162,26 @@ static void create_thread_print_status(Display *dpy, bool to_stdout)
 	Pthread_create(&tid, NULL, thread_print_status, arg);
 }
 
-/*
- * Create threads for the repeating updaters.
- */
+/* Create threads for the repeating updaters */
 static void create_threads_repeating(void)
 {
 	pthread_t tid;
 
-	for (size_t i = 0; i < NCOMPONENTS; i++)
+	for (size_t i = 0; i < N_COMPONENTS; i++)
 		/* Is it a repeating component? */
 		if (components[i].sleep_secs >= 0)
 			Pthread_create(&tid, NULL, thread_upd_repeating,
 				       (void *)i);
 }
 
-/*
- * Determine whether the component at position ‘posn’ is signal-only.
- */
-static bool is_signal_only(const size_t posn)
-{
-	struct component c = components[posn];
-
-	return c.sleep_secs < 0 && c.signum >= 0;
-}
-
-/*
- * Create threads for running signal-only updaters once to get an initial value.
- */
+/* Create threads for running signal-only updaters once to get an initial
+   value */
 static void create_threads_sig_only_initial(void)
 {
 	pthread_t tid;
 
-	for (size_t i = 0; i < NCOMPONENTS; i++)
-		if (is_signal_only(i))
+	for (size_t i = 0; i < N_COMPONENTS; i++)
+		if (status_bar_component_signal_only(status_bar, i))
 			Pthread_create(&tid, NULL, thread_upd_single,
 				       (void *)i);
 }
@@ -201,7 +191,7 @@ static void create_threads_single(const int signum)
 	pthread_t tid;
 
 	/* Find components that specify this signal */
-	for (size_t i = 0; i < NCOMPONENTS; i++)
+	for (size_t i = 0; i < N_COMPONENTS; i++)
 		if (components[i].signum == signum)
 			Pthread_create(&tid, NULL, thread_upd_single,
 				       (void *)i);
@@ -241,6 +231,9 @@ int main(int argc, char *argv[])
 
 	Signal(SIGINT, terminate);
 	Signal(SIGTERM, terminate);
+
+	status_bar = status_bar_create(components, N_COMPONENTS, MAX_COMP_SIZE,
+				       divider);
 
 	create_threads_repeating();
 	create_threads_sig_only_initial();
