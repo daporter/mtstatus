@@ -212,6 +212,19 @@ void Pthread_create(pthread_t *tidp, pthread_attr_t *attrp,
 		posix_error(rc, "Pthread_create error");
 }
 
+void Pthread_detach(pthread_t tid)
+{
+	int rc;
+
+	if ((rc = pthread_detach(tid)) != 0)
+		posix_error(rc, "Pthread_detach error");
+}
+
+pthread_t Pthread_self(void)
+{
+	return pthread_self();
+}
+
 void Pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
 {
 	int rc;
@@ -234,6 +247,14 @@ void Pthread_mutex_unlock(pthread_mutex_t *mutex)
 
 	if ((rc = pthread_mutex_unlock(mutex)) != 0)
 		posix_error(rc, "Pthread_mutex_unlock");
+}
+
+void Pthread_mutex_destroy(pthread_mutex_t *mutex)
+{
+	int rc;
+
+	if ((rc = pthread_mutex_destroy(mutex)) != 0)
+		posix_error(rc, "Pthread_mutex_destroy");
 }
 
 void Pthread_cond_init(pthread_cond_t *cond, pthread_condattr_t *attr)
@@ -260,17 +281,12 @@ void Pthread_cond_signal(pthread_cond_t *cond)
 		posix_error(rc, "Pthread_cond_signal");
 }
 
-void Pthread_detach(pthread_t tid)
+void Pthread_cond_destroy(pthread_cond_t *cond)
 {
 	int rc;
 
-	if ((rc = pthread_detach(tid)) != 0)
-		posix_error(rc, "Pthread_detach error");
-}
-
-pthread_t Pthread_self(void)
-{
-	return pthread_self();
+	if ((rc = pthread_cond_destroy(cond)) != 0)
+		posix_error(rc, "Pthread_cond_destroy");
 }
 
 /* Wrappers for XLIB functions */

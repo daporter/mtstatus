@@ -20,7 +20,7 @@ typedef struct {
 
 static sbar_t *sbar;
 
-void sbar_init(const sbar_cmp_t components[], const size_t ncomps,
+void sbar_init(const sbar_cmp_t *components, const size_t ncomps,
 	       const size_t max_cmp_bufsize, const char *divider,
 	       const char *no_val_str)
 {
@@ -68,7 +68,7 @@ int sbar_cmp_get_sleep(size_t posn)
 	return sbar->components[posn].sleep_secs;
 }
 
-bool sbar_cmp_signal_only(const size_t posn)
+bool sbar_cmp_is_signal_only(const size_t posn)
 {
 	const sbar_cmp_t c = sbar->components[posn];
 
@@ -101,4 +101,16 @@ void sbar_render_on_dirty(char *buf, const size_t bufsize)
 
 	sbar->dirty = false;
 	Pthread_mutex_unlock(&sbar->mtx);
+}
+
+void sbar_destroy(void)
+{
+	if (sbar != NULL) {
+		if (sbar->cmp_bufs != NULL)
+			Free(sbar->cmp_bufs);
+		Pthread_mutex_destroy(&sbar->mtx);
+		Pthread_cond_destroy(&sbar->dirty_cnd);
+
+		Free(sbar);
+	}
 }

@@ -8,12 +8,15 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* Represents a function that returns the value a status bar component
-   displays */
+/*
+ * Function that returns an updated value for a status bar component.
+ */
 typedef void (*sbar_updater_t)(char *buf, const int bufsize, const char *args,
 			       const char *no_val_str);
 
-/* A status bar component */
+/*
+ * Status bar component.
+ */
 typedef struct {
 	const sbar_updater_t update;
 	const char *args;
@@ -21,12 +24,13 @@ typedef struct {
 	const int signum;
 } sbar_cmp_t;
 
-void sbar_init(const sbar_cmp_t components[], size_t ncomps,
+void sbar_init(const sbar_cmp_t *components, size_t ncomps,
 	       size_t max_cmp_bufsize, const char *divider,
 	       const char *no_val_str);
 void sbar_cmp_update(size_t posn);
 int sbar_cmp_get_sleep(size_t posn);
-bool sbar_cmp_signal_only(size_t posn);
+bool sbar_cmp_is_signal_only(size_t posn);
 void sbar_render_on_dirty(char *buf, size_t bufsize);
+void sbar_destroy(void);
 
 #endif

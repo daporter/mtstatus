@@ -11,6 +11,7 @@
 
 #include "config.h"
 #include "errors.h"
+#include "sbar.h"
 #include "util.h"
 
 #define N_COMPONENTS ((sizeof components) / (sizeof(sbar_cmp_t)))
@@ -142,7 +143,7 @@ static void create_threads_sig_only_initial(void)
 	pthread_t tid;
 
 	for (size_t i = 0; i < N_COMPONENTS; i++)
-		if (sbar_cmp_signal_only(i))
+		if (sbar_cmp_is_signal_only(i))
 			Pthread_create(&tid, NULL, thread_upd_single,
 				       (void *)i);
 }
@@ -205,6 +206,9 @@ int main(int argc, char *argv[])
 		process_signals(nsigs);
 		Pause();
 	}
+
+	/* TODO: Cancel theads */
+	sbar_destroy();
 
 	if (!to_stdout) {
 		xStoreName(dpy, DefaultRootWindow(dpy), NULL);
