@@ -14,48 +14,10 @@
 #include <unistd.h>
 
 #include "components.h"
+#include "config.h"
 #include "errors.h"
-#include "status_bar.h"
+#include "sbar.h"
 #include "util.h"
-
-#define MAX_COMP_SIZE 128
-#define N_COMPONENTS  ((sizeof components) / (sizeof(component_t)))
-
-const char divider[] = "  ";
-static_assert(LEN(divider) <= MAX_COMP_SIZE,
-	      "divider must be no bigger than component length");
-
-/* The components that make up the status bar.
-
-   Each element consists of an updater function and a sleep interval (in
-   seconds).  The order of the elements defines the order of components in the
-   status bar. */
-
-/*
- * Realtime signals are not individually identified by different constants in
- * the manner of standard signals. However, an application should not hard-code
- * integer values for them, since the range used for realtime signals varies
- * across UNIX implementations. Instead, a realtime signal number can be
- * referred to by adding a value to SIGRTMIN; for example, the expression
- * (SIGRTMIN + 1) refers to the second realtime signal.
- */
-
-/* clang-format off */
-component_t components[] = {
-	/* function, arguments, sleep, signal */
-	{ keyboard_indicators, NULL, -1,  0 },
-	{ notmuch,	       NULL, -1,  1 },
-	/* network traffic */
-	{ load_avg,	       NULL,  2, -1 },
-	{ ram_free,	       NULL,  2, -1 },
-	{ disk_free,	       "/",  15, -1 },
-	/* volume */
-	/* wifi */
-	{ datetime, "%a %d %b %R",   30, -1 },
-};
-/* clang-format on */
-
-status_bar_t *status_bar;
 
 /* Argument passed to the print-status thread */
 struct targ_status {
@@ -111,7 +73,7 @@ static void *thread_print_status(void *arg)
 	Pthread_detach(Pthread_self());
 
 	while (true) {
-		status_bar_print_on_dirty(status_bar, status, LEN(status));
+		sbar_render_on_dirty(status, LEN(status));
 
 		if (to_stdout) {
 			Puts(status);
@@ -132,8 +94,8 @@ static void *thread_upd_repeating(void *arg)
 	Pthread_detach(Pthread_self());
 
 	while (true) {
-		status_bar_component_update(status_bar, posn);
-		Sleep(status_bar_component_get_sleep(status_bar, posn));
+		sbar_cmp_update(posn);
+		Sleep(sbar_cmp_get_sleep(posn));
 	}
 
 	return NULL;
@@ -145,7 +107,7 @@ static void *thread_upd_single(void *arg)
 
 	Pthread_detach(Pthread_self());
 
-	status_bar_component_update(status_bar, posn);
+	sbar_cmp_update(posn);
 
 	return NULL;
 }
@@ -181,7 +143,7 @@ static void create_threads_sig_only_initial(void)
 	pthread_t tid;
 
 	for (size_t i = 0; i < N_COMPONENTS; i++)
-		if (status_bar_component_signal_only(status_bar, i))
+		if (sbar_cmp_signal_only(i))
 			Pthread_create(&tid, NULL, thread_upd_single,
 				       (void *)i);
 }
@@ -232,8 +194,7 @@ int main(int argc, char *argv[])
 	Signal(SIGINT, terminate);
 	Signal(SIGTERM, terminate);
 
-	status_bar = status_bar_create(components, N_COMPONENTS, MAX_COMP_SIZE,
-				       divider);
+	sbar_init(components, N_COMPONENTS, MAX_COMP_SIZE, divider);
 
 	create_threads_repeating();
 	create_threads_sig_only_initial();
