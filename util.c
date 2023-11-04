@@ -1,7 +1,5 @@
 #include "util.h"
 
-#include <string.h>
-
 #include "errors.h"
 
 char *util_cat(char *dest, const char *end, const char *str)

@@ -1,94 +1,104 @@
-#include "status_bar.h"
+#include "sbar.h"
 
 #include <assert.h>
-#include <pthread.h>
 #include <string.h>
 
 #include "errors.h"
 #include "util.h"
 
-status_bar_t *status_bar_create(component_t components[], const size_t ncomps,
-				const size_t max_comp_bufsize,
-				const char *divider)
+typedef struct {
+	const sbar_cmp_t *components;
+	size_t ncomponents;
+	char *cmp_bufs;
+	size_t max_cmp_bufsize;
+	const char *divider;
+	const char *no_val_str;
+	bool dirty;
+	pthread_mutex_t mtx;
+	pthread_cond_t dirty_cnd;
+} sbar_t;
+
+static sbar_t *sbar;
+
+void sbar_init(const sbar_cmp_t components[], const size_t ncomps,
+	       const size_t max_cmp_bufsize, const char *divider,
+	       const char *no_val_str)
 {
-	status_bar_t *sb = Malloc(sizeof *sb);
+	sbar = Malloc(sizeof *sbar);
 
-	sb->components = components;
-	sb->ncomponents = ncomps;
-	sb->component_bufs = Calloc(ncomps * max_comp_bufsize, sizeof(char));
-	sb->max_comp_bufsize = max_comp_bufsize;
-	sb->divider = divider;
-	sb->dirty = false;
-	Pthread_mutex_init(&sb->mtx, NULL);
-	Pthread_cond_init(&sb->dirty_cnd, NULL);
-
-	return sb;
+	sbar->components = components;
+	sbar->ncomponents = ncomps;
+	sbar->cmp_bufs = Calloc(ncomps * max_cmp_bufsize, sizeof(char));
+	sbar->max_cmp_bufsize = max_cmp_bufsize;
+	sbar->divider = divider;
+	sbar->no_val_str = no_val_str;
+	sbar->dirty = false;
+	Pthread_mutex_init(&sbar->mtx, NULL);
+	Pthread_cond_init(&sbar->dirty_cnd, NULL);
 }
 
-static char *status_bar_get_component_buf(const status_bar_t *sb,
-					  const size_t posn)
+static char *status_bar_get_cmp_buf(const sbar_t *sb, const size_t posn)
 {
 	assert(posn < sb->ncomponents &&
 	       "posn cannot be greater than number of component buffers");
 
-	return sb->component_bufs + (sb->max_comp_bufsize * posn);
+	return sb->cmp_bufs + (sb->max_cmp_bufsize * posn);
 }
 
-void status_bar_component_update(status_bar_t *sb, const size_t posn)
+void sbar_cmp_update(const size_t posn)
 {
-	assert(posn < sb->ncomponents &&
+	assert(posn < sbar->ncomponents &&
 	       "posn cannot be greater than number of component buffers");
 
-	const component_t c = sb->components[posn];
-	char tmpbuf[sb->max_comp_bufsize];
-	char *cbuf = status_bar_get_component_buf(sb, posn);
+	const sbar_cmp_t c = sbar->components[posn];
+	char tmpbuf[sbar->max_cmp_bufsize];
+	char *cbuf = status_bar_get_cmp_buf(sbar, posn);
 
-	c.update(tmpbuf, LEN(tmpbuf), c.args);
+	c.update(tmpbuf, LEN(tmpbuf), c.args, sbar->no_val_str);
 
-	Pthread_mutex_lock(&sb->mtx);
-	memcpy(cbuf, tmpbuf, sb->max_comp_bufsize);
-	sb->dirty = true;
-	Pthread_mutex_unlock(&sb->mtx);
-	Pthread_cond_signal(&sb->dirty_cnd);
+	Pthread_mutex_lock(&sbar->mtx);
+	Memcpy(cbuf, tmpbuf, sbar->max_cmp_bufsize);
+	sbar->dirty = true;
+	Pthread_mutex_unlock(&sbar->mtx);
+	Pthread_cond_signal(&sbar->dirty_cnd);
 }
 
-int status_bar_component_get_sleep(status_bar_t *sb, size_t posn)
+int sbar_cmp_get_sleep(size_t posn)
 {
-	return sb->components[posn].sleep_secs;
+	return sbar->components[posn].sleep_secs;
 }
 
-bool status_bar_component_signal_only(const status_bar_t *sb, const size_t posn)
+bool sbar_cmp_signal_only(const size_t posn)
 {
-	const component_t c = sb->components[posn];
+	const sbar_cmp_t c = sbar->components[posn];
 
 	return c.sleep_secs < 0 && c.signum >= 0;
 }
 
-void status_bar_print_on_dirty(status_bar_t *sb, char *buf,
-			       const size_t bufsize)
+void sbar_render_on_dirty(char *buf, const size_t bufsize)
 {
 	size_t i = 0;
 	char *ptr = buf;
 	char *end = buf + bufsize;
 	const char *cb;
 
-	Pthread_mutex_lock(&sb->mtx);
-	while (!sb->dirty)
-		Pthread_cond_wait(&sb->dirty_cnd, &sb->mtx);
+	Pthread_mutex_lock(&sbar->mtx);
+	while (!sbar->dirty)
+		Pthread_cond_wait(&sbar->dirty_cnd, &sbar->mtx);
 
-	for (i = 0; (ptr < end) && (i < sb->ncomponents - 1); i++) {
-		cb = status_bar_get_component_buf(sb, i);
+	for (i = 0; (ptr < end) && (i < sbar->ncomponents - 1); i++) {
+		cb = status_bar_get_cmp_buf(sbar, i);
 		if (strlen(cb) > 0) {
 			ptr = util_cat(ptr, end, cb);
-			ptr = util_cat(ptr, end, sb->divider);
+			ptr = util_cat(ptr, end, sbar->divider);
 		}
 	}
 	if (ptr < end) {
-		cb = status_bar_get_component_buf(sb, i);
+		cb = status_bar_get_cmp_buf(sbar, i);
 		if (strlen(cb) > 0)
 			ptr = util_cat(ptr, end, cb);
 	}
 
-	sb->dirty = false;
-	Pthread_mutex_unlock(&sb->mtx);
+	sbar->dirty = false;
+	Pthread_mutex_unlock(&sbar->mtx);
 }

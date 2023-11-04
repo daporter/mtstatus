@@ -6,18 +6,17 @@
 
 #include <assert.h>
 #include <signal.h>
-#include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <time.h>
 #include <unistd.h>
 
-#include "components.h"
 #include "config.h"
 #include "errors.h"
-#include "sbar.h"
 #include "util.h"
+
+#define N_COMPONENTS ((sizeof components) / (sizeof(sbar_cmp_t)))
+
+static_assert(LEN(divider) <= MAX_COMP_SIZE,
+	      "divider must be no bigger than component length");
 
 /* Argument passed to the print-status thread */
 struct targ_status {
@@ -31,7 +30,7 @@ static volatile sig_atomic_t done;
    processed.  Set by the signal handler. */
 static volatile sig_atomic_t *signals_received;
 
-static void terminate(const int unused(signum))
+static void terminate(UNUSED(int signum))
 {
 	done = true;
 }
@@ -194,7 +193,7 @@ int main(int argc, char *argv[])
 	Signal(SIGINT, terminate);
 	Signal(SIGTERM, terminate);
 
-	sbar_init(components, N_COMPONENTS, MAX_COMP_SIZE, divider);
+	sbar_init(components, N_COMPONENTS, MAX_COMP_SIZE, divider, no_val_str);
 
 	create_threads_repeating();
 	create_threads_sig_only_initial();

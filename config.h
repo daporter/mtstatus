@@ -1,18 +1,13 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include <assert.h>
-
 #include "components.h"
 #include "sbar.h"
-#include "util.h"
 
 #define MAX_COMP_SIZE 128
-#define N_COMPONENTS  ((sizeof components) / (sizeof(sbar_cmp_t)))
 
 const char divider[] = "  ";
-static_assert(LEN(divider) <= MAX_COMP_SIZE,
-	      "divider must be no bigger than component length");
+const char no_val_str[] = "n/a";
 
 /* The components that make up the status bar.
 
@@ -30,17 +25,17 @@ static_assert(LEN(divider) <= MAX_COMP_SIZE,
  */
 
 /* clang-format off */
-const sbar_cmp_t components[] = {
-	/* function, arguments,	    sleep, signal */
-	{ keyb_ind,  NULL,	    -1,	    0 },  
-	{ notmuch,   NULL,	    -1,	    1 },  
-	/* network traffic */
-	{ load_avg,  NULL,	     2,	   -1 }, 
-	{ ram_free,  NULL,	     2,	   -1 }, 
-	{ disk_free, "/",	    15,	   -1 }, 
-	/* volume */
-	/* wifi */
-	{ datetime,  "%a %d %b %R", 30,	   -1 }, 
+ const sbar_cmp_t components[] = {
+        /* function, arguments,     sleep, signal */
+        { keyb_ind,  NULL,          -1,     0 },
+        { notmuch,   NULL,          -1,     1 },
+        /* network traffic */
+        { load_avg,  NULL,           2,    -1 },
+        { ram_free,  NULL,           2,    -1 },
+        { disk_free, "/",           15,    -1 },
+        /* volume */
+        /* wifi */
+        { datetime,  "%a %d %b %R", 30,    -1 },
 };
 /* clang-format on */
 

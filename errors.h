@@ -3,9 +3,8 @@
 
 #include <X11/Xlib.h>
 #include <pthread.h>
-#include <stdarg.h>
-#include <stddef.h>
 #include <stdio.h>
+#include <stddef.h>
 
 /*
  * Error-handling functions.
@@ -55,7 +54,8 @@ int Snprintf(char *str, size_t size, const char *fmt, ...);
  */
 void Pthread_create(pthread_t *tidp, pthread_attr_t *attrp,
 		    void *(*routine)(void *), void *argp);
-void Pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr);
+void Pthread_mutex_init(pthread_mutex_t *mutex,
+			const pthread_mutexattr_t *attr);
 void Pthread_mutex_lock(pthread_mutex_t *mutex);
 void Pthread_mutex_unlock(pthread_mutex_t *mutex);
 void Pthread_cond_init(pthread_cond_t *cond, pthread_condattr_t *attr);

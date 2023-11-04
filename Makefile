@@ -14,7 +14,7 @@ all:    $(BIN)
 $(BIN): $(OBJS)
 	$(CC) $(CFLAGS) $(LDLIBS) -o $@ $^
 
-$(BIN).o: components.h errors.h sbar.h util.h
+$(BIN).o: config.h errors.h util.h
 components.o: components.h errors.h util.h
 errors.o: errors.h
 sbar.o: sbar.h errors.h util.h

@@ -3,16 +3,12 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/statvfs.h>
 
 #include "errors.h"
 #include "util.h"
-
-const char no_val_str[] = "n/a";
 
 static bool run_cmd(char *buf, const int bufsize, const char *cmd)
 {
@@ -38,7 +34,8 @@ static bool run_cmd(char *buf, const int bufsize, const char *cmd)
 	return true;
 }
 
-void keyboard_indicators(char *buf, const int bufsize, const char *unused(args))
+void keyb_ind(char *buf, const int bufsize, const char *UNUSED(args),
+	      const char *UNUSED(no_val_str))
 {
 	Display *dpy;
 	XKeyboardState state;
@@ -51,8 +48,8 @@ void keyboard_indicators(char *buf, const int bufsize, const char *unused(args))
 	XGetKeyboardControl(dpy, &state);
 	XCloseDisplay(dpy);
 
-	caps_on = state.led_mask & 1;
-	numlock_on = state.led_mask & 2;
+	caps_on = state.led_mask & (1 << 0);
+	numlock_on = state.led_mask & (1 << 1);
 
 	buf[0] = '\0';
 	if (caps_on) {
@@ -64,7 +61,8 @@ void keyboard_indicators(char *buf, const int bufsize, const char *unused(args))
 		Snprintf(buf, bufsize, "Num");
 }
 
-void notmuch(char *buf, const int bufsize, const char *unused(args))
+void notmuch(char *buf, const int bufsize, const char *UNUSED(args),
+	     const char *no_val_str)
 {
 	char output[bufsize];
 	long count;
@@ -89,7 +87,8 @@ void notmuch(char *buf, const int bufsize, const char *unused(args))
 		Snprintf(buf, bufsize, "  %ld", count);
 }
 
-void load_avg(char *buf, const int bufsize, const char *unused(args))
+void load_avg(char *buf, const int bufsize, const char *UNUSED(args),
+	      const char *no_val_str)
 {
 	double avgs[1];
 	char output[bufsize];
@@ -104,7 +103,8 @@ void load_avg(char *buf, const int bufsize, const char *unused(args))
 	Snprintf(buf, bufsize, "  %s", output);
 }
 
-void ram_free(char *buf, const int bufsize, const char *unused(args))
+void ram_free(char *buf, const int bufsize, const char *UNUSED(args),
+	      const char *no_val_str)
 {
 	const char meminfo[] = "/proc/meminfo";
 	FILE *fp;
@@ -138,7 +138,8 @@ void ram_free(char *buf, const int bufsize, const char *unused(args))
 	Snprintf(buf, bufsize, "  %s", free_str);
 }
 
-void disk_free(char *buf, const int bufsize, const char *path)
+void disk_free(char *buf, const int bufsize, const char *path,
+	       const char *no_val_str)
 {
 	struct statvfs fs;
 	char output[bufsize];
@@ -153,7 +154,8 @@ void disk_free(char *buf, const int bufsize, const char *path)
 	Snprintf(buf, bufsize, "󰋊 %s", output);
 }
 
-void datetime(char *buf, const int bufsize, const char *date_fmt)
+void datetime(char *buf, const int bufsize, const char *date_fmt,
+	      const char *no_val_str)
 {
 	time_t t;
 	struct tm now;

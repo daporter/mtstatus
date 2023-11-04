@@ -1,37 +1,32 @@
+/*
+ * A multi-threaded status bar.
+ */
+
 #ifndef STATUS_BAR_H
 #define STATUS_BAR_H
 
 #include <stdbool.h>
-#include <stdlib.h>
+#include <stddef.h>
 
 /* Represents a function that returns the value a status bar component
    displays */
-typedef void (*updater_t)(char *buf, const int bufsize, const char *args);
+typedef void (*sbar_updater_t)(char *buf, const int bufsize, const char *args,
+			       const char *no_val_str);
 
 /* A status bar component */
 typedef struct {
-	const updater_t update;
+	const sbar_updater_t update;
 	const char *args;
 	const int sleep_secs;
 	const int signum;
-} component_t;
+} sbar_cmp_t;
 
-typedef struct status_bar {
-	component_t *components;
-	size_t ncomponents;
-	char *component_bufs;
-	size_t max_comp_bufsize;
-	const char *divider;
-	bool dirty;
-	pthread_mutex_t mtx;
-	pthread_cond_t dirty_cnd;
-} status_bar_t;
-
-status_bar_t *status_bar_create(component_t components[], size_t ncomps,
-				size_t max_comp_bufsize, const char *divider);
-void status_bar_component_update(status_bar_t *sb, size_t posn);
-int status_bar_component_get_sleep(status_bar_t *sb, size_t posn);
-bool status_bar_component_signal_only(const status_bar_t *sb, size_t posn);
-void status_bar_print_on_dirty(status_bar_t *sb, char *buf, size_t bufsize);
+void sbar_init(const sbar_cmp_t components[], size_t ncomps,
+	       size_t max_cmp_bufsize, const char *divider,
+	       const char *no_val_str);
+void sbar_cmp_update(size_t posn);
+int sbar_cmp_get_sleep(size_t posn);
+bool sbar_cmp_signal_only(size_t posn);
+void sbar_render_on_dirty(char *buf, size_t bufsize);
 
 #endif
