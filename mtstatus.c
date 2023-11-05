@@ -101,7 +101,7 @@ static void *thread_upd_repeating(void *arg)
 	return NULL;
 }
 
-static void *thread_upd_single(void *arg)
+static void *thread_upd_once(void *arg)
 {
 	size_t posn = (size_t)arg;
 
@@ -138,32 +138,30 @@ static void create_threads_repeating(void)
 
 /* Create threads for running signal-only updaters once to get an initial
    value */
-static void create_threads_sig_only_initial(void)
+static void create_threads_async_initial(void)
 {
 	pthread_t tid;
 
 	for (size_t i = 0; i < N_COMPONENTS; i++)
 		if (sbar_cmp_is_signal_only(i))
-			Pthread_create(&tid, NULL, thread_upd_single,
-				       (void *)i);
+			Pthread_create(&tid, NULL, thread_upd_once, (void *)i);
 }
 
-static void create_threads_single(const int signum)
+static void create_threads_async(const int signum)
 {
 	pthread_t tid;
 
 	/* Find components that specify this signal */
 	for (size_t i = 0; i < N_COMPONENTS; i++)
 		if (components[i].signum == signum)
-			Pthread_create(&tid, NULL, thread_upd_single,
-				       (void *)i);
+			Pthread_create(&tid, NULL, thread_upd_once, (void *)i);
 }
 
 static void process_signals(const int nsigs)
 {
 	for (int i = 0; i < nsigs; i++)
 		if (signals_received[i]) {
-			create_threads_single(i);
+			create_threads_async(i);
 			signals_received[i] = false;
 		}
 }
@@ -197,7 +195,7 @@ int main(int argc, char *argv[])
 	sbar_init(components, N_COMPONENTS, MAX_COMP_SIZE, divider, no_val_str);
 
 	create_threads_repeating();
-	create_threads_sig_only_initial();
+	create_threads_async_initial();
 	create_thread_print_status(dpy, to_stdout);
 
 	/* Wait for signals to create single-update threads */

@@ -1,4 +1,4 @@
-#include "components.h"
+#include "component.h"
 
 #include <errno.h>
 #include <inttypes.h>
@@ -34,8 +34,8 @@ static bool run_cmd(char *buf, const int bufsize, const char *cmd)
 	return true;
 }
 
-void keyb_ind(char *buf, const int bufsize, const char *UNUSED(args),
-	      const char *UNUSED(no_val_str))
+void component_keyb_ind(char *buf, const int bufsize, const char *UNUSED(args),
+			const char *UNUSED(no_val_str))
 {
 	Display *dpy;
 	XKeyboardState state;
@@ -61,8 +61,8 @@ void keyb_ind(char *buf, const int bufsize, const char *UNUSED(args),
 		Snprintf(buf, bufsize, "Num");
 }
 
-void notmuch(char *buf, const int bufsize, const char *UNUSED(args),
-	     const char *no_val_str)
+void component_notmuch(char *buf, const int bufsize, const char *UNUSED(args),
+		       const char *no_val_str)
 {
 	char output[bufsize];
 	long count;
@@ -87,8 +87,8 @@ void notmuch(char *buf, const int bufsize, const char *UNUSED(args),
 		Snprintf(buf, bufsize, "  %ld", count);
 }
 
-void load_avg(char *buf, const int bufsize, const char *UNUSED(args),
-	      const char *no_val_str)
+void component_load_avg(char *buf, const int bufsize, const char *UNUSED(args),
+			const char *no_val_str)
 {
 	double avgs[1];
 	char output[bufsize];
@@ -103,8 +103,8 @@ void load_avg(char *buf, const int bufsize, const char *UNUSED(args),
 	Snprintf(buf, bufsize, "  %s", output);
 }
 
-void ram_free(char *buf, const int bufsize, const char *UNUSED(args),
-	      const char *no_val_str)
+void component_ram_free(char *buf, const int bufsize, const char *UNUSED(args),
+			const char *no_val_str)
 {
 	const char meminfo[] = "/proc/meminfo";
 	FILE *fp;
@@ -138,8 +138,8 @@ void ram_free(char *buf, const int bufsize, const char *UNUSED(args),
 	Snprintf(buf, bufsize, "  %s", free_str);
 }
 
-void disk_free(char *buf, const int bufsize, const char *path,
-	       const char *no_val_str)
+void component_disk_free(char *buf, const int bufsize, const char *path,
+			 const char *no_val_str)
 {
 	struct statvfs fs;
 	char output[bufsize];
@@ -154,8 +154,8 @@ void disk_free(char *buf, const int bufsize, const char *path,
 	Snprintf(buf, bufsize, "󰋊 %s", output);
 }
 
-void datetime(char *buf, const int bufsize, const char *date_fmt,
-	      const char *no_val_str)
+void component_datetime(char *buf, const int bufsize, const char *date_fmt,
+			const char *no_val_str)
 {
 	time_t t;
 	struct tm now;
