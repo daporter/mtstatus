@@ -1,9 +1,3 @@
-/* TODO:
-   - Add error and warning wrappers for library and system calls.
-   - Add more component functions (see ‘syscalls(2) manpage’).
-   - Add debugging output.
-   - Refactor duplicated code. */
-
 #include <assert.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -118,7 +112,7 @@ static void create_thread_print_status(Display *dpy, bool to_stdout)
 	struct targ_status *arg;
 	pthread_t tid;
 
-	arg = Malloc(sizeof *arg);
+	arg = Calloc(1, sizeof *arg);
 	arg->to_stdout = to_stdout;
 	arg->dpy = dpy;
 	Pthread_create(&tid, NULL, thread_print_status, arg);

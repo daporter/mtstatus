@@ -1,4 +1,6 @@
-/* Error-handling functions */
+/*
+ * Error-handling functions.
+ */
 
 #include "errors.h"
 
@@ -12,7 +14,9 @@
 
 #define BUF_SIZE 500
 
-/* Some standard error handling routines used by various programs */
+/*
+ * Standard error handling routines used by various programs.
+ */
 
 static void verr(bool use_err, int err, const char *fmt, va_list ap)
 {

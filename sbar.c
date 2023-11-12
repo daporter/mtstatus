@@ -32,7 +32,7 @@ void sbar_init(const sbar_cmp_t *components, const size_t ncomps,
 	       const size_t max_cmp_bufsize, const char *divider,
 	       const char *no_val_str)
 {
-	sbar = Malloc(sizeof *sbar);
+	sbar = Calloc(1, sizeof *sbar);
 
 	sbar->components = components;
 	sbar->ncomponents = ncomps;
