@@ -1,10 +1,14 @@
-#include "sbar.h"
-
+#include <X11/Xlib.h>
 #include <assert.h>
 #include <bits/pthreadtypes.h>
 #include <pthread.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
+
+#include "sbar.h"
 
 #include "errors.h"
 #include "util.h"
@@ -33,7 +37,7 @@ static pthread_cond_t dirty_cnd = PTHREAD_COND_INITIALIZER;
 static_assert(LEN(divider) <= SBAR_MAX_COMP_SIZE,
 	      "divider must be no bigger than component length");
 
-void sbar_init(const sbar_component_defn_t *comp_defns, const size_t ncomps)
+void sbar_init(const sbar_comp_defn_t *comp_defns, const size_t ncomps)
 {
 	component_bufs = Calloc(ncomps * SBAR_MAX_COMP_SIZE, sizeof(char));
 	components = Calloc(ncomps, sizeof(component_t));

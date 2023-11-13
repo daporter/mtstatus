@@ -1,11 +1,3 @@
-#ifndef ERRORS_H
-#define ERRORS_H
-
-#include <X11/Xlib.h>
-#include <pthread.h>
-#include <stddef.h>
-#include <stdio.h>
-
 /*
  * Error-handling functions.
  */
@@ -78,5 +70,3 @@ Display *xOpenDisplay(_Xconst char *display_name);
 void xStoreName(Display *display, Window w, _Xconst char *window_name);
 void xCloseDisplay(Display *display);
 void xFlush(Display *display);
-
-#endif

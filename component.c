@@ -1,11 +1,14 @@
-#include "component.h"
-
+#include <X11/Xlib.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/statvfs.h>
+#include <time.h>
+
+#include "component.h"
 
 #include "errors.h"
 #include "util.h"

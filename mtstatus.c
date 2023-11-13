@@ -1,15 +1,20 @@
+#include <X11/Xlib.h>
 #include <assert.h>
 #include <signal.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "config.h"
+#include "component.h"
 #include "errors.h"
 #include "sbar.h"
 #include "util.h"
+#include "config.h"
 
-#define N_COMPONENTS \
-	((sizeof component_defns) / (sizeof(sbar_component_defn_t)))
+#define N_COMPONENTS ((sizeof component_defns) / (sizeof(sbar_comp_defn_t)))
 
 /* Argument passed to the print-status thread */
 struct targ_status {

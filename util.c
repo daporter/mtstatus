@@ -1,3 +1,9 @@
+#include <X11/Xlib.h>
+#include <pthread.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+
 #include "util.h"
 
 #include "errors.h"
