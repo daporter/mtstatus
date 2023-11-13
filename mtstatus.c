@@ -8,10 +8,8 @@
 #include "sbar.h"
 #include "util.h"
 
-#define N_COMPONENTS ((sizeof components) / (sizeof(sbar_cmp_t)))
-
-static_assert(LEN(divider) <= MAX_COMP_SIZE,
-	      "divider must be no bigger than component length");
+#define N_COMPONENTS \
+	((sizeof component_defns) / (sizeof(sbar_component_defn_t)))
 
 /* Argument passed to the print-status thread */
 struct targ_status {
@@ -41,7 +39,7 @@ static int install_signal_handlers(void)
 	int nsigs = 0;
 
 	for (size_t i = 0; i < N_COMPONENTS; i++) {
-		signum = components[i].signum;
+		signum = component_defns[i].signum;
 		if (signum >= 0) {
 			Signal(SIGRTMIN + signum, flag_signal);
 			nsigs++;
@@ -57,7 +55,7 @@ static void *thread_print_status(void *arg)
 {
 	bool to_stdout;
 	Display *dpy;
-	char status[N_COMPONENTS * MAX_COMP_SIZE];
+	char status[N_COMPONENTS * SBAR_MAX_COMP_SIZE];
 
 	/* Unpack arg */
 	to_stdout = ((struct targ_status *)arg)->to_stdout;
@@ -84,12 +82,14 @@ static void *thread_print_status(void *arg)
 static void *thread_upd_repeating(void *arg)
 {
 	size_t posn = (size_t)arg;
+	time_t interval = component_defns[posn].interval;
 
+	// TODO(david): Create this thread already detached.
 	Pthread_detach(Pthread_self());
 
 	while (true) {
-		sbar_cmp_update(posn);
-		Sleep(sbar_cmp_get_sleep(posn));
+		Sleep(interval);
+		sbar_update_component(posn);
 	}
 
 	return NULL;
@@ -101,7 +101,7 @@ static void *thread_upd_once(void *arg)
 
 	Pthread_detach(Pthread_self());
 
-	sbar_cmp_update(posn);
+	sbar_update_component(posn);
 
 	return NULL;
 }
@@ -125,20 +125,18 @@ static void create_threads_repeating(void)
 
 	for (size_t i = 0; i < N_COMPONENTS; i++)
 		/* Is it a repeating component? */
-		if (components[i].sleep_secs >= 0)
+		if (component_defns[i].interval >= 0)
 			Pthread_create(&tid, NULL, thread_upd_repeating,
 				       (void *)i);
 }
 
-/* Create threads for running signal-only updaters once to get an initial
-   value */
-static void create_threads_async_initial(void)
+/* Create threads for running updaters once to get an initial value */
+static void create_threads_initial(void)
 {
 	pthread_t tid;
 
 	for (size_t i = 0; i < N_COMPONENTS; i++)
-		if (sbar_cmp_is_signal_only(i))
-			Pthread_create(&tid, NULL, thread_upd_once, (void *)i);
+		Pthread_create(&tid, NULL, thread_upd_once, (void *)i);
 }
 
 static void create_threads_async(const int signum)
@@ -147,7 +145,7 @@ static void create_threads_async(const int signum)
 
 	/* Find components that specify this signal */
 	for (size_t i = 0; i < N_COMPONENTS; i++)
-		if (components[i].signum == signum)
+		if (component_defns[i].signum == signum)
 			Pthread_create(&tid, NULL, thread_upd_once, (void *)i);
 }
 
@@ -186,11 +184,11 @@ int main(int argc, char *argv[])
 	Signal(SIGINT, terminate);
 	Signal(SIGTERM, terminate);
 
-	sbar_init(components, N_COMPONENTS, MAX_COMP_SIZE, divider, no_val_str);
+	sbar_init(component_defns, N_COMPONENTS);
 
-	create_threads_repeating();
-	create_threads_async_initial();
 	create_thread_print_status(dpy, to_stdout);
+	create_threads_initial();
+	create_threads_repeating();
 
 	/* Wait for signals to create single-update threads */
 	nsigs = install_signal_handlers();
@@ -198,9 +196,6 @@ int main(int argc, char *argv[])
 		process_signals(nsigs);
 		Pause();
 	}
-
-	/* TODO: Cancel theads */
-	sbar_destroy();
 
 	if (!to_stdout) {
 		xStoreName(dpy, DefaultRootWindow(dpy), NULL);

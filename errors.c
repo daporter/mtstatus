@@ -205,6 +205,14 @@ int Snprintf(char *str, size_t size, const char *fmt, ...)
 	return ret;
 }
 
+/*
+ * String wrappers.
+ */
+char *Strcpy(char dst[], const char *src)
+{
+	return strcpy(dst, src);
+}
+
 /* Wrappers for Pthreads thread control functions */
 
 void Pthread_create(pthread_t *tidp, pthread_attr_t *attrp,

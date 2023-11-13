@@ -3,7 +3,7 @@ LDLIBS	 = -lX11
 CPPFLAGS = -D_DEFAULT_SOURCE
 BIN	 = mtstatus
 
-# TODO: add a release mode that disables assertions, etc.
+# TODO(david): add a release mode that disables assertions, etc.
 
 SRCS = $(wildcard *.c)
 OBJS = $(SRCS:.c=.o)
