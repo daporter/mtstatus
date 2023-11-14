@@ -305,6 +305,22 @@ void Pthread_cond_destroy(pthread_cond_t *cond)
 		posix_error(rc, "Pthread_cond_destroy");
 }
 
+void Pthread_attr_init(pthread_attr_t *attr)
+{
+	int rc;
+
+	if ((rc = pthread_attr_init(attr)) != 0)
+		posix_error(rc, "Pthread_attr_init");
+}
+
+void Pthread_attr_setdetachstate(pthread_attr_t *attr, int detachstate)
+{
+	int rc;
+
+	if ((rc = pthread_attr_setdetachstate(attr, detachstate)) != 0)
+		posix_error(rc, "Pthread_attr_setdetachstate");
+}
+
 /* Wrappers for XLIB functions */
 
 Display *xOpenDisplay(_Xconst char *display_name)

@@ -62,6 +62,8 @@ void Pthread_cond_init(pthread_cond_t *cond, pthread_condattr_t *attr);
 void Pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex);
 void Pthread_cond_signal(pthread_cond_t *cond);
 void Pthread_cond_destroy(pthread_cond_t *cond);
+void Pthread_attr_init(pthread_attr_t *attr);
+void Pthread_attr_setdetachstate(pthread_attr_t *attr, int detachstate);
 
 /*
  * XLIB wrappers.

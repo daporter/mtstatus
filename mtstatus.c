@@ -1,5 +1,6 @@
 #include <X11/Xlib.h>
 #include <assert.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -21,6 +22,8 @@ struct targ_status {
 	bool to_stdout;
 	Display *dpy;
 };
+
+static pthread_attr_t attr; /* Used to create detached threads */
 
 static volatile sig_atomic_t done;
 
@@ -67,8 +70,6 @@ static void *thread_print_status(void *arg)
 	dpy = ((struct targ_status *)arg)->dpy;
 	Free(arg);
 
-	Pthread_detach(Pthread_self());
-
 	while (true) {
 		sbar_render_on_dirty(status, LEN(status));
 
@@ -89,9 +90,6 @@ static void *thread_upd_repeating(void *arg)
 	size_t posn = (size_t)arg;
 	time_t interval = component_defns[posn].interval;
 
-	// TODO(david): Create this thread already detached.
-	Pthread_detach(Pthread_self());
-
 	while (true) {
 		Sleep(interval);
 		sbar_update_component(posn);
@@ -103,8 +101,6 @@ static void *thread_upd_repeating(void *arg)
 static void *thread_upd_once(void *arg)
 {
 	size_t posn = (size_t)arg;
-
-	Pthread_detach(Pthread_self());
 
 	sbar_update_component(posn);
 
@@ -120,7 +116,7 @@ static void create_thread_print_status(Display *dpy, bool to_stdout)
 	arg = Calloc(1, sizeof *arg);
 	arg->to_stdout = to_stdout;
 	arg->dpy = dpy;
-	Pthread_create(&tid, NULL, thread_print_status, arg);
+	Pthread_create(&tid, &attr, thread_print_status, arg);
 }
 
 /* Create threads for the repeating updaters */
@@ -129,9 +125,8 @@ static void create_threads_repeating(void)
 	pthread_t tid;
 
 	for (size_t i = 0; i < N_COMPONENTS; i++)
-		/* Is it a repeating component? */
 		if (component_defns[i].interval >= 0)
-			Pthread_create(&tid, NULL, thread_upd_repeating,
+			Pthread_create(&tid, &attr, thread_upd_repeating,
 				       (void *)i);
 }
 
@@ -141,7 +136,7 @@ static void create_threads_initial(void)
 	pthread_t tid;
 
 	for (size_t i = 0; i < N_COMPONENTS; i++)
-		Pthread_create(&tid, NULL, thread_upd_once, (void *)i);
+		Pthread_create(&tid, &attr, thread_upd_once, (void *)i);
 }
 
 static void create_threads_async(const int signum)
@@ -151,7 +146,7 @@ static void create_threads_async(const int signum)
 	/* Find components that specify this signal */
 	for (size_t i = 0; i < N_COMPONENTS; i++)
 		if (component_defns[i].signum == signum)
-			Pthread_create(&tid, NULL, thread_upd_once, (void *)i);
+			Pthread_create(&tid, &attr, thread_upd_once, (void *)i);
 }
 
 static void process_signals(const int nsigs)
@@ -190,6 +185,9 @@ int main(int argc, char *argv[])
 	Signal(SIGTERM, terminate);
 
 	sbar_init(component_defns, N_COMPONENTS);
+
+	Pthread_attr_init(&attr);
+	Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	create_thread_print_status(dpy, to_stdout);
 	create_threads_initial();
