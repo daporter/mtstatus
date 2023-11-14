@@ -18,7 +18,7 @@
 
 #define N_COMPONENTS ((sizeof component_defns) / (sizeof(sbar_comp_defn_t)))
 
-#define SBAR_MAX_COMP_SIZE 128
+#define SBAR_MAX_COMP_SIZE (size_t)128
 
 typedef struct component {
 	char *buf;
@@ -33,7 +33,7 @@ typedef struct component {
 
 typedef struct sbar {
 	char *component_bufs;
-	size_t ncomponents;
+	uint8_t ncomponents;
 	component_t *components;
 	bool dirty;
 	pthread_mutex_t mutex;
@@ -83,7 +83,7 @@ static void terminate(UNUSED(int signum))
 
 static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 {
-	size_t i = 0;
+	uint8_t i = 0;
 	char *ptr = buf;
 	char *end = buf + bufsize;
 	const char *cbuf;
@@ -169,7 +169,7 @@ static void *thread_once(void *arg)
 	return NULL;
 }
 
-static void sbar_create(sbar_t *sbar, const size_t ncomponents,
+static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 			const sbar_comp_defn_t *comp_defns)
 {
 	component_t *c;
@@ -183,10 +183,10 @@ static void sbar_create(sbar_t *sbar, const size_t ncomponents,
 	Pthread_cond_init(&sbar->dirty_cond, NULL);
 
 	/* Create the components */
-	for (size_t i = 0; i < ncomponents; i++) {
+	for (uint8_t i = 0; i < ncomponents; i++) {
 		c = &sbar->components[i];
 
-		c->buf = sbar->component_bufs + (SBAR_MAX_COMP_SIZE * i);
+		c->buf = sbar->component_bufs + (ptrdiff_t)(SBAR_MAX_COMP_SIZE * i);
 		Strcpy(c->buf, no_val_str);
 		c->update = comp_defns[i].update;
 		c->args = comp_defns[i].args;
@@ -207,7 +207,7 @@ static void sbar_start(sbar_t *sbar)
 
 	Pthread_create(&sbar->thread, &attr, thread_status, sbar);
 
-	for (size_t i = 0; i < sbar->ncomponents; i++) {
+	for (uint8_t i = 0; i < sbar->ncomponents; i++) {
 		c = &sbar->components[i];
 
 		Pthread_create(&tid, &attr, thread_once, c);

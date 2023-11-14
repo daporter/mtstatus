@@ -18,7 +18,8 @@ char *util_cat(char *dest, const char *end, const char *str)
 int util_fmt_human(char *buf, int len, uintmax_t num, int base)
 {
 	double scaled;
-	size_t i, prefixlen;
+	size_t prefixlen;
+	uint8_t i;
 	const char **prefix;
 	const char *prefix_si[] = { "", "k", "M", "G", "T", "P", "E", "Z", "Y" };
 	const char *prefix_iec[] = { "",   "Ki", "Mi", "Gi", "Ti",
@@ -38,7 +39,7 @@ int util_fmt_human(char *buf, int len, uintmax_t num, int base)
 		return -1;
 	}
 
-	scaled = num;
+	scaled = (double)num;
 	for (i = 0; i < prefixlen && scaled >= base; i++)
 		scaled /= base;
 
