@@ -68,9 +68,8 @@ void sbar_update_component(const size_t posn)
 	Pthread_mutex_lock(&dirty_mtx);
 	Memcpy(c.buf, tmpbuf, SBAR_MAX_COMP_SIZE);
 	dirty = true;
-	Pthread_mutex_unlock(&dirty_mtx);
-
 	Pthread_cond_signal(&dirty_cnd);
+	Pthread_mutex_unlock(&dirty_mtx);
 }
 
 void sbar_flush_on_dirty(char *buf, const size_t bufsize)
