@@ -23,8 +23,6 @@ struct targ_status {
 	Display *dpy;
 };
 
-static pthread_attr_t attr; /* Used to create detached threads */
-
 static volatile sig_atomic_t done;
 
 /* Array of flags indicating which signals have been received and not yet
@@ -71,7 +69,7 @@ static void *thread_print_status(void *arg)
 	Free(arg);
 
 	while (true) {
-		sbar_render_on_dirty(status, LEN(status));
+		sbar_flush_on_dirty(status, LEN(status));
 
 		if (to_stdout) {
 			Puts(status);
@@ -107,63 +105,16 @@ static void *thread_upd_once(void *arg)
 	return NULL;
 }
 
-/* Create the thread for printing the status bar */
-static void create_thread_print_status(Display *dpy, bool to_stdout)
-{
-	struct targ_status *arg;
-	pthread_t tid;
-
-	arg = Calloc(1, sizeof *arg);
-	arg->to_stdout = to_stdout;
-	arg->dpy = dpy;
-	Pthread_create(&tid, &attr, thread_print_status, arg);
-}
-
-/* Create threads for the repeating updaters */
-static void create_threads_repeating(void)
-{
-	pthread_t tid;
-
-	for (size_t i = 0; i < N_COMPONENTS; i++)
-		if (component_defns[i].interval >= 0)
-			Pthread_create(&tid, &attr, thread_upd_repeating,
-				       (void *)i);
-}
-
-/* Create threads for running updaters once to get an initial value */
-static void create_threads_initial(void)
-{
-	pthread_t tid;
-
-	for (size_t i = 0; i < N_COMPONENTS; i++)
-		Pthread_create(&tid, &attr, thread_upd_once, (void *)i);
-}
-
-static void create_threads_async(const int signum)
-{
-	pthread_t tid;
-
-	/* Find components that specify this signal */
-	for (size_t i = 0; i < N_COMPONENTS; i++)
-		if (component_defns[i].signum == signum)
-			Pthread_create(&tid, &attr, thread_upd_once, (void *)i);
-}
-
-static void process_signals(const int nsigs)
-{
-	for (int i = 0; i < nsigs; i++)
-		if (signals_received[i]) {
-			create_threads_async(i);
-			signals_received[i] = false;
-		}
-}
-
 int main(int argc, char *argv[])
 {
 	int opt;
 	bool to_stdout = false;
 	Display *dpy = NULL;
-	int nsigs;
+	pthread_attr_t attr;
+	struct targ_status *arg;
+	pthread_t tid;
+	size_t nsigs;
+	size_t i;
 
 	while ((opt = getopt(argc, argv, "s")) != -1) {
 		switch (opt) {
@@ -189,14 +140,40 @@ int main(int argc, char *argv[])
 	Pthread_attr_init(&attr);
 	Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-	create_thread_print_status(dpy, to_stdout);
-	create_threads_initial();
-	create_threads_repeating();
+	/* Create thread for printing the status bar */
+	arg = Calloc(1, sizeof *arg);
+	arg->to_stdout = to_stdout;
+	arg->dpy = dpy;
+	Pthread_create(&tid, &attr, thread_print_status, arg);
+
+	/* Create threads for running component updaters once initially */
+	for (i = 0; i < N_COMPONENTS; i++)
+		Pthread_create(&tid, &attr, thread_upd_once, (void *)i);
+
+	/* Create threads for running repeating component updaters */
+	for (i = 0; i < N_COMPONENTS; i++)
+		if (component_defns[i].interval >= 0)
+			Pthread_create(&tid, &attr, thread_upd_repeating,
+				       (void *)i);
 
 	/* Wait for signals to create single-update threads */
 	nsigs = install_signal_handlers();
+
 	while (!done) {
-		process_signals(nsigs);
+		/* Process signals received */
+		for (i = 0; i < nsigs; i++)
+			if (signals_received[i]) {
+				/* Create threads to run component updaters once */
+				for (i = 0; i < N_COMPONENTS; i++)
+					if (component_defns[i].signum ==
+					    signals_received[i])
+						Pthread_create(&tid, &attr,
+							       thread_upd_once,
+							       (void *)i);
+
+				signals_received[i] = false;
+			}
+
 		Pause();
 	}
 

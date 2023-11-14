@@ -27,9 +27,9 @@ typedef struct {
 
 static const char divider[] = "  ";
 static const char no_val_str[] = "n/a";
-static char *component_bufs;
 static component_t *components;
 static size_t ncomponents;
+static char *component_bufs;
 static bool dirty = false;
 static pthread_mutex_t dirty_mtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t dirty_cnd = PTHREAD_COND_INITIALIZER;
@@ -39,8 +39,9 @@ static_assert(LEN(divider) <= SBAR_MAX_COMP_SIZE,
 
 void sbar_init(const sbar_comp_defn_t *comp_defns, const size_t ncomps)
 {
-	component_bufs = Calloc(ncomps * SBAR_MAX_COMP_SIZE, sizeof(char));
 	components = Calloc(ncomps, sizeof(component_t));
+	component_bufs = Calloc(ncomps * SBAR_MAX_COMP_SIZE, sizeof(char));
+
 	for (size_t i = 0; i < ncomps; i++) {
 		components[i].update = comp_defns[i].update;
 		components[i].args = comp_defns[i].args;
@@ -62,7 +63,7 @@ void sbar_update_component(const size_t posn)
 	c.update(tmpbuf, SBAR_MAX_COMP_SIZE, c.args, no_val_str);
 
 	/*
-	 * Maintain status bar "dirty" invariant.
+	 * Maintain the status bar "dirty" invariant.
 	 */
 	Pthread_mutex_lock(&dirty_mtx);
 	Memcpy(c.buf, tmpbuf, SBAR_MAX_COMP_SIZE);
@@ -72,7 +73,7 @@ void sbar_update_component(const size_t posn)
 	Pthread_cond_signal(&dirty_cnd);
 }
 
-void sbar_render_on_dirty(char *buf, const size_t bufsize)
+void sbar_flush_on_dirty(char *buf, const size_t bufsize)
 {
 	size_t i = 0;
 	char *ptr = buf;
@@ -82,7 +83,7 @@ void sbar_render_on_dirty(char *buf, const size_t bufsize)
 	bzero(buf, bufsize);
 
 	/*
-	 * Maintain status bar "dirty" invariant.
+	 * Maintain the status bar "dirty" invariant.
 	 */
 	Pthread_mutex_lock(&dirty_mtx);
 	while (!dirty)

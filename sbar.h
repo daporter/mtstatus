@@ -22,5 +22,5 @@ typedef struct {
 
 void sbar_init(const sbar_comp_defn_t *comp_defns, size_t ncomps);
 void sbar_update_component(size_t posn);
-void sbar_render_on_dirty(char *buf, size_t bufsize);
+void sbar_flush_on_dirty(char *buf, size_t bufsize);
 void sbar_destroy(void);
