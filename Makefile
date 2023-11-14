@@ -1,4 +1,4 @@
-CFLAGS	 = -std=c17 -pedantic -pthread -Og -g3 -Wall -Wextra -Werror -fanalyzer
+CFLAGS	 = -std=c17 -pthread -Og -g3 -Wall -Wextra -Wpedantic -Werror -fanalyzer
 LDLIBS	 = -lX11
 CPPFLAGS = -D_DEFAULT_SOURCE
 BIN	 = mtstatus
