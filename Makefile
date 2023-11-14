@@ -14,10 +14,9 @@ all:    $(BIN)
 $(BIN): $(OBJS)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $^ $(LDLIBS)
 
-$(BIN).o: config.h component.h sbar.h errors.h util.h
+$(BIN).o: component.h config.h errors.h util.h
 component.o: component.h errors.h util.h
 errors.o: errors.h
-sbar.o: sbar.h errors.h util.h
 util.o: util.h errors.h
 
 .PHONY: clean

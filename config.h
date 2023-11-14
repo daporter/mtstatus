@@ -5,6 +5,19 @@
    status bar. */
 
 /*
+ * Function that returns an updated value for a status bar component.
+ */
+typedef void (*sbar_updater_t)(char *buf, const int bufsize, const char *args,
+			       const char *no_val_str);
+
+typedef struct {
+	const sbar_updater_t update;
+	const char *args;
+	const time_t interval;
+	const int signum;
+} sbar_comp_defn_t;
+
+/*
  * Realtime signals are not individually identified by different constants in
  * the manner of standard signals. However, an application should not hard-code
  * integer values for them, since the range used for realtime signals varies
