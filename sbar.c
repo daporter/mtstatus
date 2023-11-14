@@ -104,9 +104,3 @@ void sbar_flush_on_dirty(char *buf, const size_t bufsize)
 	dirty = false;
 	Pthread_mutex_unlock(&dirty_mtx);
 }
-
-void sbar_destroy(void)
-{
-	if (component_bufs != NULL)
-		Free(component_bufs);
-}
