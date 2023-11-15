@@ -11,7 +11,7 @@ CFLAGS	 = -std=c17 -pthread -Og -g3 -Wall -Wextra -Wpedantic -Wshadow -Werror -f
 LDFLAGS  =
 LDLIBS	 = -lX11
 
-.PHONY: all clean
+.PHONY: all check clean
 
 all: $(BIN)
 
@@ -23,6 +23,9 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
 
 $(BINDIR) $(OBJDIR):
 	mkdir -p $@
+
+check:
+	clang-tidy $(SRCS)
 
 clean:
 	@$(RM) -rv $(OBJDIR) $(BIN) core
