@@ -1,7 +1,8 @@
 -xc
 -std=c17
--pedantic
 -Wall
 -Wextra
+-Wpedantic
+-Wshadow
 -Werror
 -D_DEFAULT_SOURCE

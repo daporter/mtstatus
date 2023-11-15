@@ -7,7 +7,7 @@ SRCS = $(wildcard $(SRCDIR)/*.c)
 OBJS = $(SRCS:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 
 CPPFLAGS = -D_DEFAULT_SOURCE -MMD -MP
-CFLAGS	 = -std=c17 -pthread -Og -g3 -Wall -Wextra -Wpedantic -Werror -fanalyzer
+CFLAGS	 = -std=c17 -pthread -Og -g3 -Wall -Wextra -Wpedantic -Wshadow -Werror -fanalyzer
 LDFLAGS  =
 LDLIBS	 = -lX11
 
