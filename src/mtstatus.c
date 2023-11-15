@@ -107,6 +107,7 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 		if (strlen(cbuf) > 0)
 			ptr = util_cat(ptr, end, cbuf);
 	}
+	*ptr = '\0';
 
 	sbar->dirty = false;
 	Pthread_mutex_unlock(&sbar->mutex);
