@@ -1,24 +1,30 @@
+SRCDIR = src
+OBJDIR = build
+BINDIR = .
+
+BIN  = $(BINDIR)/mtstatus
+SRCS = $(wildcard $(SRCDIR)/*.c)
+OBJS = $(SRCS:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
+
+CPPFLAGS = -D_DEFAULT_SOURCE -MMD -MP
 CFLAGS	 = -std=c17 -pthread -Og -g3 -Wall -Wextra -Wpedantic -Werror -fanalyzer
+LDFLAGS  =
 LDLIBS	 = -lX11
-CPPFLAGS = -D_DEFAULT_SOURCE
-BIN	 = mtstatus
 
-# TODO(david): add a release mode that disables assertions, etc.
+.PHONY: all clean
 
-SRCS = $(wildcard *.c)
-OBJS = $(SRCS:.c=.o)
+all: $(BIN)
 
-.PHONY: all
-all:    $(BIN)
+$(BIN): $(OBJS) | $(BINDIR)
+	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
-$(BIN): $(OBJS)
-	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $^ $(LDLIBS)
+$(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-$(BIN).o: component.h config.h errors.h util.h
-component.o: component.h errors.h util.h
-errors.o: errors.h
-util.o: util.h errors.h
+$(BINDIR) $(OBJDIR):
+	mkdir -p $@
 
-.PHONY: clean
 clean:
-	$(RM) $(OBJS) $(BIN) core
+	@$(RM) -rv $(OBJDIR) $(BIN) core
+
+-include $(OBJS:.o=.d)

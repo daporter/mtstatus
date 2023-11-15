@@ -88,8 +88,6 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 	char *end = buf + bufsize;
 	const char *cbuf;
 
-	bzero(buf, bufsize);
-
 	/*
 	 * Maintain the status bar "dirty" invariant.
 	 */
