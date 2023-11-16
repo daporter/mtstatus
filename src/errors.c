@@ -128,6 +128,7 @@ handler_t *Signal(int signum, handler_t *handler)
 }
 
 /* Memory mapping wrappers */
+
 void *Memcpy(void *dest, const void *src, size_t n)
 {
 	return memcpy(dest, src, n);

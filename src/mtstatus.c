@@ -26,8 +26,8 @@ typedef struct component {
 	const char *args;
 	time_t interval;
 	int signum;
-	pthread_t thread_repeating;
-	pthread_t thread_async;
+	pthread_t thr_repeating;
+	pthread_t thr_async;
 	struct sbar *sbar;
 } component_t;
 
@@ -185,7 +185,7 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	for (uint8_t i = 0; i < ncomponents; i++) {
 		c = &sbar->components[i];
 
-		c->buf = sbar->component_bufs + (ptrdiff_t)(SBAR_MAX_COMP_SIZE * i);
+		c->buf = sbar->component_bufs + (SBAR_MAX_COMP_SIZE * i);
 		Strcpy(c->buf, no_val_str);
 		c->update = comp_defns[i].update;
 		c->args = comp_defns[i].args;
@@ -212,7 +212,7 @@ static void sbar_start(sbar_t *sbar)
 		Pthread_create(&tid, &attr, thread_once, c);
 
 		if (c->interval >= 0)
-			Pthread_create(&c->thread_repeating, &attr,
+			Pthread_create(&c->thr_repeating, &attr,
 				       thread_repeating, c);
 		/* if (c->signum >= 0) */
 		/* 	Pthread_create(&c->thread_async, &attr, thread_async, c); */
