@@ -238,6 +238,8 @@ static void sbar_start(sbar_t *sbar)
 int main(int argc, char *argv[])
 {
 	int opt;
+	char pidfile[MAXLEN];
+	FILE *fp;
 	sbar_t sbar;
 
 	/* NOLINTNEXTLINE(concurrency-mt-unsafe) */
@@ -253,6 +255,12 @@ int main(int argc, char *argv[])
 			app_error("Unexpected case in switch()");
 		}
 	}
+
+	Snprintf(pidfile, MAXLEN, "/tmp/%s.pid", argv[0]);
+	fp = Fopen(pidfile, "w");
+	if (fprintf(fp, "%ld", (long)getpid()) < 0)
+		app_error("Unable to create PID file");
+	Fclose(fp);
 
 	if (!to_stdout)
 		dpy = xOpenDisplay(NULL);
@@ -271,6 +279,9 @@ int main(int argc, char *argv[])
 		xStoreName(dpy, DefaultRootWindow(dpy), NULL);
 		xCloseDisplay(dpy);
 	}
+
+	if (remove(pidfile) < 0)
+		unix_warn("Unable to remove %s", pidfile);
 
 	return EXIT_SUCCESS;
 }
