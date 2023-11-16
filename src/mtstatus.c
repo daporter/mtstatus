@@ -44,11 +44,9 @@ typedef struct sbar {
 static const char divider[] = "  ";
 static const char no_val_str[] = "n/a";
 
-static volatile sig_atomic_t done;
+static sigset_t signal_set;
 
-/* Array of flags indicating which signals have been received and not yet
-   processed.  Set by the signal handler. */
-/* static volatile sig_atomic_t *signals_received; */
+static volatile sig_atomic_t done;
 
 static bool to_stdout = false;
 static Display *dpy = NULL;
@@ -57,29 +55,6 @@ static void terminate(UNUSED(int signum))
 {
 	done = true;
 }
-
-/* static void flag_signal(const int signum) */
-/* { */
-/* 	signals_received[signum - SIGRTMIN] = true; */
-/* } */
-
-/* static int install_signal_handlers(void) */
-/* { */
-/* 	int signum; */
-/* 	int nsigs = 0; */
-
-/* 	for (size_t i = 0; i < N_COMPONENTS; i++) { */
-/* 		signum = component_defns[i].signum; */
-/* 		if (signum >= 0) { */
-/* 			Signal(SIGRTMIN + signum, flag_signal); */
-/* 			nsigs++; */
-/* 		} */
-/* 	} */
-
-/* 	signals_received = Calloc(nsigs, sizeof *signals_received); */
-
-/* 	return nsigs; */
-/* } */
 
 static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 {
@@ -168,6 +143,25 @@ static void *thread_once(void *arg)
 	return NULL;
 }
 
+static void *thread_async(void *arg)
+{
+	component_t *c = (component_t *)arg;
+	sigset_t myset;
+	int recv;
+
+	/* Wait only for this component’s signal number */
+	Sigemptyset(&myset);
+	Sigaddset(&signal_set, c->signum);
+
+	while (true) {
+		Sigwait(&signal_set, &recv);
+		assert(recv == c->signum && "unexpected signal received");
+		sbar_component_update(c);
+	}
+
+	return NULL;
+}
+
 static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 			const sbar_comp_defn_t *comp_defns)
 {
@@ -181,6 +175,8 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	Pthread_mutex_init(&sbar->mutex, NULL);
 	Pthread_cond_init(&sbar->dirty_cond, NULL);
 
+	Sigemptyset(&signal_set);
+
 	/* Create the components */
 	for (uint8_t i = 0; i < ncomponents; i++) {
 		c = &sbar->components[i];
@@ -190,9 +186,28 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 		c->update = comp_defns[i].update;
 		c->args = comp_defns[i].args;
 		c->interval = comp_defns[i].interval;
+
+		/*
+		 * The signal for which each asynchronous component thread will
+		 * wait must be masked in all other threads.  This ensures that
+		 * the signal will never be delivered to any other thread.  We
+		 * set the mask here since all threads inherit their signal mask
+		 * from their creator.
+		 */
 		c->signum = comp_defns[i].signum;
+		if (c->signum >= 0) {
+			/*
+			 * Assume ‘signum’ specifies a real-time signal number
+			 * and adjust the value accordingly.
+			 */
+			c->signum += SIGRTMIN;
+			Sigaddset(&signal_set, c->signum);
+		}
+
 		c->sbar = sbar;
 	}
+
+	pthread_sigmask(SIG_BLOCK, &signal_set, NULL);
 }
 
 static void sbar_start(sbar_t *sbar)
@@ -214,8 +229,8 @@ static void sbar_start(sbar_t *sbar)
 		if (c->interval >= 0)
 			Pthread_create(&c->thr_repeating, &attr,
 				       thread_repeating, c);
-		/* if (c->signum >= 0) */
-		/* 	Pthread_create(&c->thread_async, &attr, thread_async, c); */
+		if (c->signum >= 0)
+			Pthread_create(&c->thr_async, &attr, thread_async, c);
 	}
 }
 
@@ -223,9 +238,6 @@ int main(int argc, char *argv[])
 {
 	int opt;
 	sbar_t sbar;
-
-	/* size_t nsigs; */
-	/* size_t i; */
 
 	while ((opt = getopt(argc, argv, "s")) != -1) {
 		switch (opt) {
@@ -249,26 +261,8 @@ int main(int argc, char *argv[])
 	sbar_create(&sbar, N_COMPONENTS, component_defns);
 	sbar_start(&sbar);
 
-	/* Wait for signals to create single-update threads */
-	/* nsigs = install_signal_handlers(); */
-
-	while (!done) {
-		/* Process signals received */
-		/* for (i = 0; i < nsigs; i++) */
-		/* 	if (signals_received[i]) { */
-		/* 		/\* Create threads to run component updaters once *\/ */
-		/* 		for (i = 0; i < N_COMPONENTS; i++) */
-		/* 			if (component_defns[i].signum == */
-		/* 			    signals_received[i]) */
-		/* 				Pthread_create(&tid, &attr, */
-		/* 					       thread_once, */
-		/* 					       (void *)i); */
-
-		/* 		signals_received[i] = false; */
-		/* 	} */
-
+	while (!done)
 		Pause();
-	}
 
 	if (!to_stdout) {
 		xStoreName(dpy, DefaultRootWindow(dpy), NULL);

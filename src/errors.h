@@ -19,6 +19,9 @@ void Pause(void);
  */
 typedef void handler_t(int);
 handler_t *Signal(int signum, handler_t *handler);
+void Sigemptyset(sigset_t *set);
+void Sigaddset(sigset_t *set, int signum);
+void Sigwait(const sigset_t *restrict set, int *restrict sig);
 
 /*
  * Memory mapping wrappers.

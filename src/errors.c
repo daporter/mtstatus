@@ -127,6 +127,26 @@ handler_t *Signal(int signum, handler_t *handler)
 	return (old_action.sa_handler);
 }
 
+void Sigemptyset(sigset_t *set)
+{
+	if (sigemptyset(set) < 0)
+		unix_error("Sigemptyset error");
+}
+
+void Sigaddset(sigset_t *set, int signum)
+{
+	if (sigaddset(set, signum) < 0)
+		unix_error("Sigaddset error");
+}
+
+void Sigwait(const sigset_t *restrict set, int *restrict sig)
+{
+	int status;
+
+	if ((status = sigwait(set, sig)) != 0)
+		posix_error(status, "Sigwait error");
+}
+
 /* Memory mapping wrappers */
 
 void *Memcpy(void *dest, const void *src, size_t n)

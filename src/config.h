@@ -27,16 +27,16 @@ typedef struct {
  */
 
 /* clang-format off */
- const sbar_comp_defn_t component_defns[] = {
-        /* function,            arguments,      interval,  signal */
-        { component_keyb_ind,   NULL,           -1,         0 },
-        { component_notmuch,    NULL,           -1,         1 },
-        /* network traffic */
-        { component_load_avg,   NULL,            2,        -1 },
-        { component_ram_free,   NULL,            2,        -1 },
-        { component_disk_free,  "/",            15,        -1 },
-        /* volume */
-        /* wifi */
-        { component_datetime,   "%a %d %b %R",  30,        -1 },
+const sbar_comp_defn_t component_defns[] = {
+	/* function,            arguments,      interval,  signal */
+	{ component_keyb_ind,   NULL,           -1,         0 },
+	{ component_notmuch,    NULL,           -1,         1 },
+	/* network traffic */
+	{ component_load_avg,   NULL,            2,        -1 },
+	{ component_ram_free,   NULL,            2,        -1 },
+	{ component_disk_free,  "/",            15,        -1 },
+	/* volume */
+	/* wifi */
+	{ component_datetime,   "%a %d %b %R",  30,        -1 },
 };
 /* clang-format on */
