@@ -24,13 +24,15 @@
 
 static void verr(bool use_err, int err, const char *fmt, va_list ap)
 {
-	char msg[BUF_SIZE];
+	char msg[BUF_SIZE], err_msg[BUF_SIZE];
 
+	// NOLINTNEXTLINE(clang-analyzer-valist.Uninitialized)
 	(void)vsnprintf(msg, BUF_SIZE, fmt, ap);
 
-	if (use_err)
-		(void)fprintf(stderr, "ERROR -- %s: %s\n", msg, strerror(err));
-	else
+	if (use_err) {
+		strerror_r(err, err_msg, BUF_SIZE);
+		(void)fprintf(stderr, "ERROR -- %s: %s\n", msg, err_msg);
+	} else
 		(void)fprintf(stderr, "ERROR -- %s\n", msg);
 }
 
@@ -53,7 +55,7 @@ void unix_error(const char *fmt, ...)
 	verr(true, errno, fmt, ap);
 	va_end(ap);
 
-	exit(EXIT_FAILURE);
+	exit(EXIT_FAILURE); /* NOLINT(concurrency-mt-unsafe) */
 }
 
 /* Posix-style warning */
@@ -75,7 +77,7 @@ void posix_error(int code, const char *fmt, ...)
 	verr(true, code, fmt, ap);
 	va_end(ap);
 
-	exit(EXIT_FAILURE);
+	exit(EXIT_FAILURE); /* NOLINT(concurrency-mt-unsafe) */
 }
 
 /* Application-style warning */
@@ -97,14 +99,14 @@ void app_error(const char *fmt, ...)
 	verr(false, 0, fmt, ap);
 	va_end(ap);
 
-	exit(EXIT_FAILURE);
+	exit(EXIT_FAILURE); /* NOLINT(concurrency-mt-unsafe) */
 }
 
 /* Wrappers for Unix process control functions */
 
 unsigned int Sleep(unsigned int secs)
 {
-	return sleep(secs);
+	return sleep(secs); /* NOLINT(concurrency-mt-unsafe) */
 }
 
 void Pause(void)
@@ -228,14 +230,6 @@ int Snprintf(char *str, size_t size, const char *fmt, ...)
 	}
 
 	return ret;
-}
-
-/*
- * String wrappers.
- */
-char *Strcpy(char dst[], const char *src)
-{
-	return strcpy(dst, src);
 }
 
 /* Wrappers for Pthreads thread control functions */

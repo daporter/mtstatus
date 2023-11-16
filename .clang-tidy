@@ -1,5 +1,4 @@
 ---
-FormatStyle: file       # uses .clang-format in the closest parent dir
 Checks: >-
   -*,
   bugprone-*,
@@ -7,15 +6,22 @@ Checks: >-
   -bugprone-easily-swappable-parameters,
   cert-*,
   clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  concurrency-*,
   google-*,
   -google-readability-braces-around-statements,
   linuxkernel-*,
+  llvm-*,
+  -llvm-header-guard,
   misc-*,
   modernize-*,
+  -modernize-macro-to-enum,
   performance-*,
   portability-*,
   readability-*,
   -readability-braces-around-statements,
   -readability-identifier-length,
   -readability-isolate-declaration
+HeaderFilterRegex: 'src/.*'
+InheritParentConfig: true
 ...

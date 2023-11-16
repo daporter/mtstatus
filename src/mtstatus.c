@@ -182,7 +182,8 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 		c = &sbar->components[i];
 
 		c->buf = sbar->component_bufs + (SBAR_MAX_COMP_SIZE * i);
-		Strcpy(c->buf, no_val_str);
+		/* NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.strcpy) */
+		strcpy(c->buf, no_val_str);
 		c->update = comp_defns[i].update;
 		c->args = comp_defns[i].args;
 		c->interval = comp_defns[i].interval;
@@ -239,6 +240,7 @@ int main(int argc, char *argv[])
 	int opt;
 	sbar_t sbar;
 
+	/* NOLINTNEXTLINE(concurrency-mt-unsafe) */
 	while ((opt = getopt(argc, argv, "s")) != -1) {
 		switch (opt) {
 		case 's':
@@ -265,6 +267,7 @@ int main(int argc, char *argv[])
 		Pause();
 
 	if (!to_stdout) {
+		/* NOLINTNEXTLINE(clang-analyzer-core.NullDereference) */
 		xStoreName(dpy, DefaultRootWindow(dpy), NULL);
 		xCloseDisplay(dpy);
 	}

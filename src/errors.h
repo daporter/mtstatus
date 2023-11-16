@@ -45,11 +45,6 @@ void Puts(const char *s);
 int Snprintf(char *str, size_t size, const char *fmt, ...);
 
 /*
- * String wrappers.
- */
-char *Strcpy(char dst[], const char *src);
-
-/*
  * Pthreads thread control wrappers.
  */
 void Pthread_create(pthread_t *tidp, pthread_attr_t *attrp,
