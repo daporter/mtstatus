@@ -18,7 +18,7 @@
 
 #define N_COMPONENTS ((sizeof component_defns) / (sizeof(sbar_comp_defn_t)))
 
-#define SBAR_MAX_COMP_SIZE (size_t)128
+#define MAXLEN 128
 
 typedef struct component {
 	char *buf;
@@ -91,7 +91,7 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 static void *thread_status(void *arg)
 {
 	sbar_t *sbar = (sbar_t *)arg;
-	char status[N_COMPONENTS * SBAR_MAX_COMP_SIZE];
+	char status[N_COMPONENTS * MAXLEN];
 
 	while (true) {
 		sbar_flush_on_dirty(sbar, status, LEN(status));
@@ -110,15 +110,15 @@ static void *thread_status(void *arg)
 
 static void sbar_component_update(const component_t *c)
 {
-	char tmpbuf[SBAR_MAX_COMP_SIZE];
+	char tmpbuf[MAXLEN];
 
-	c->update(tmpbuf, SBAR_MAX_COMP_SIZE, c->args, no_val_str);
+	c->update(tmpbuf, MAXLEN, c->args, no_val_str);
 
 	/*
 	 * Maintain the status bar "dirty" invariant.
 	 */
 	Pthread_mutex_lock(&c->sbar->mutex);
-	Memcpy(c->buf, tmpbuf, SBAR_MAX_COMP_SIZE);
+	Memcpy(c->buf, tmpbuf, MAXLEN);
 	c->sbar->dirty = true;
 	Pthread_cond_signal(&c->sbar->dirty_cond);
 	Pthread_mutex_unlock(&c->sbar->mutex);
@@ -168,7 +168,7 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	component_t *c;
 
 	sbar->component_bufs =
-		Calloc(ncomponents * SBAR_MAX_COMP_SIZE, sizeof(char));
+		Calloc(ncomponents * (size_t)MAXLEN, sizeof(char));
 	sbar->ncomponents = ncomponents;
 	sbar->components = Calloc(ncomponents, sizeof(component_t));
 	sbar->dirty = false;
@@ -178,10 +178,10 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	Sigemptyset(&signal_set);
 
 	/* Create the components */
-	for (uint8_t i = 0; i < ncomponents; i++) {
+	for (unsigned i = 0; i < ncomponents; i++) {
 		c = &sbar->components[i];
 
-		c->buf = sbar->component_bufs + (SBAR_MAX_COMP_SIZE * i);
+		c->buf = sbar->component_bufs + ((size_t)MAXLEN * i);
 		/* NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.strcpy) */
 		strcpy(c->buf, no_val_str);
 		c->update = comp_defns[i].update;
