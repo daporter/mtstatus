@@ -25,7 +25,7 @@ $(BINDIR) $(OBJDIR):
 	mkdir -p $@
 
 check:
-	clang-tidy $(SRCS)
+	parallel-moreutils clang-tidy --quiet -- $(SRCS)
 
 clean:
 	@$(RM) -rv $(OBJDIR) $(BIN) core
