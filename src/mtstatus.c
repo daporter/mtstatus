@@ -21,6 +21,7 @@
 #define MAXLEN 128
 
 typedef struct component {
+	unsigned id;
 	char *buf;
 	sbar_updater_t update;
 	const char *args;
@@ -166,26 +167,25 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	Pthread_mutex_init(&sbar->mutex, NULL);
 	Pthread_cond_init(&sbar->dirty_cond, NULL);
 
+	/*
+	 * The signal for which each asynchronous component thread will wait
+	 * must be masked in all other threads.  This ensures that the signal
+	 * will never be delivered to any other thread.  We set the mask here
+	 * since all threads inherit their signal mask from their creator.
+	 */
 	Sigemptyset(&sigset);
 
 	/* Create the components */
 	for (unsigned i = 0; i < ncomponents; i++) {
 		cp = &sbar->components[i];
 
+		cp->id = i;
 		cp->buf = sbar->component_bufs + ((size_t)MAXLEN * i);
 		/* NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.strcpy) */
 		strcpy(cp->buf, no_val_str);
 		cp->update = comp_defns[i].update;
 		cp->args = comp_defns[i].args;
 		cp->interval = comp_defns[i].interval;
-
-		/*
-		 * The signal for which each asynchronous component thread will
-		 * wait must be masked in all other threads.  This ensures that
-		 * the signal will never be delivered to any other thread.  We
-		 * set the mask here since all threads inherit their signal mask
-		 * from their creator.
-		 */
 		cp->signum = comp_defns[i].signum;
 		if (cp->signum >= 0) {
 			/*
