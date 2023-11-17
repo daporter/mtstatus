@@ -74,7 +74,23 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 	Pthread_mutex_unlock(&sbar->mutex);
 }
 
-static void *thread_status(void *arg)
+static void sbar_component_update(const component_t *c)
+{
+	char tmpbuf[MAXLEN];
+
+	c->update(tmpbuf, MAXLEN, c->args, no_val_str);
+
+	/*
+	 * Maintain the status bar "dirty" invariant.
+	 */
+	Pthread_mutex_lock(&c->sbar->mutex);
+	Memcpy(c->buf, tmpbuf, MAXLEN);
+	c->sbar->dirty = true;
+	Pthread_cond_signal(&c->sbar->dirty_cond);
+	Pthread_mutex_unlock(&c->sbar->mutex);
+}
+
+static void *thread_flush(void *arg)
 {
 	sbar_t *sbar = (sbar_t *)arg;
 	char status[N_COMPONENTS * MAXLEN];
@@ -94,22 +110,6 @@ static void *thread_status(void *arg)
 	return NULL;
 }
 
-static void sbar_component_update(const component_t *c)
-{
-	char tmpbuf[MAXLEN];
-
-	c->update(tmpbuf, MAXLEN, c->args, no_val_str);
-
-	/*
-	 * Maintain the status bar "dirty" invariant.
-	 */
-	Pthread_mutex_lock(&c->sbar->mutex);
-	Memcpy(c->buf, tmpbuf, MAXLEN);
-	c->sbar->dirty = true;
-	Pthread_cond_signal(&c->sbar->dirty_cond);
-	Pthread_mutex_unlock(&c->sbar->mutex);
-}
-
 static void *thread_repeating(void *arg)
 {
 	const component_t *c = (component_t *)arg;
@@ -118,14 +118,6 @@ static void *thread_repeating(void *arg)
 		Sleep(c->interval);
 		sbar_component_update(c);
 	}
-	return NULL;
-}
-
-static void *thread_once(void *arg)
-{
-	const component_t *c = (component_t *)arg;
-
-	sbar_component_update(c);
 	return NULL;
 }
 
@@ -144,6 +136,14 @@ static void *thread_async(void *arg)
 		sbar_component_update(c);
 	}
 
+	return NULL;
+}
+
+static void *thread_once(void *arg)
+{
+	const component_t *c = (component_t *)arg;
+
+	sbar_component_update(c);
 	return NULL;
 }
 
@@ -205,7 +205,7 @@ static void sbar_start(sbar_t *sbar)
 	Pthread_attr_init(&attr);
 	Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-	Pthread_create(&sbar->thread, &attr, thread_status, sbar);
+	Pthread_create(&sbar->thread, &attr, thread_flush, sbar);
 
 	for (uint8_t i = 0; i < sbar->ncomponents; i++) {
 		c = &sbar->components[i];
