@@ -35,7 +35,7 @@ typedef struct {
 
 /* clang-format off */
 const sbar_comp_defn_t component_defns[] = {
-	/* function,            arguments,      interval,  signal */
+	/* function,            arguments,      interval,  signal (SIGRTMIN+n) */
 	{ component_keyb_ind,   NULL,           -1,         0 },
 	{ component_notmuch,    NULL,           -1,         1 },
 	/* network traffic */
