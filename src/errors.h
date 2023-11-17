@@ -43,6 +43,7 @@ void Fclose(FILE *fp);
 void Fflush(FILE *fp);
 void Puts(const char *s);
 int Snprintf(char *str, size_t size, const char *fmt, ...);
+int Fprintf(FILE *str, const char *fmt, ...);
 
 /*
  * Pthreads thread control wrappers.

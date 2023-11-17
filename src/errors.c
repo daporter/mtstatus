@@ -221,11 +221,28 @@ int Snprintf(char *str, size_t size, const char *fmt, ...)
 	va_end(ap);
 
 	if (ret < 0) {
-		unix_warn("vsnprintf");
+		unix_warn("Snprintf");
 		return -1;
 	}
 	if ((size_t)ret >= size) {
-		app_warn("vsnprintf: Output truncated");
+		app_warn("Snprintf: Output truncated");
+		return -1;
+	}
+
+	return ret;
+}
+
+int Fprintf(FILE *str, const char *fmt, ...)
+{
+	va_list ap;
+	int ret;
+
+	va_start(ap, fmt);
+	ret = fprintf(str, fmt, ap);
+	va_end(ap);
+
+	if (ret < 0) {
+		unix_warn("Fprintf");
 		return -1;
 	}
 

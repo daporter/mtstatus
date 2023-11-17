@@ -44,17 +44,8 @@ typedef struct sbar {
 static const char divider[] = "  ";
 static const char no_val_str[] = "n/a";
 
-static sigset_t signal_set;
-
-static volatile sig_atomic_t done;
-
 static bool to_stdout = false;
 static Display *dpy = NULL;
-
-static void terminate(UNUSED(int signum))
-{
-	done = true;
-}
 
 static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 {
@@ -146,16 +137,15 @@ static void *thread_once(void *arg)
 static void *thread_async(void *arg)
 {
 	component_t *c = (component_t *)arg;
-	sigset_t myset;
-	int recv;
+	sigset_t sigset;
+	int sig;
 
-	/* Wait only for this component’s signal number */
-	Sigemptyset(&myset);
-	Sigaddset(&signal_set, c->signum);
+	Sigemptyset(&sigset);
+	Sigaddset(&sigset, c->signum);
 
 	while (true) {
-		Sigwait(&signal_set, &recv);
-		assert(recv == c->signum && "unexpected signal received");
+		Sigwait(&sigset, &sig);
+		assert(sig == c->signum && "unexpected signal received");
 		sbar_component_update(c);
 	}
 
@@ -165,7 +155,8 @@ static void *thread_async(void *arg)
 static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 			const sbar_comp_defn_t *comp_defns)
 {
-	component_t *c;
+	component_t *cp;
+	sigset_t sigset;
 
 	sbar->component_bufs =
 		Calloc(ncomponents * (size_t)MAXLEN, sizeof(char));
@@ -175,18 +166,18 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	Pthread_mutex_init(&sbar->mutex, NULL);
 	Pthread_cond_init(&sbar->dirty_cond, NULL);
 
-	Sigemptyset(&signal_set);
+	Sigemptyset(&sigset);
 
 	/* Create the components */
 	for (unsigned i = 0; i < ncomponents; i++) {
-		c = &sbar->components[i];
+		cp = &sbar->components[i];
 
-		c->buf = sbar->component_bufs + ((size_t)MAXLEN * i);
+		cp->buf = sbar->component_bufs + ((size_t)MAXLEN * i);
 		/* NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.strcpy) */
-		strcpy(c->buf, no_val_str);
-		c->update = comp_defns[i].update;
-		c->args = comp_defns[i].args;
-		c->interval = comp_defns[i].interval;
+		strcpy(cp->buf, no_val_str);
+		cp->update = comp_defns[i].update;
+		cp->args = comp_defns[i].args;
+		cp->interval = comp_defns[i].interval;
 
 		/*
 		 * The signal for which each asynchronous component thread will
@@ -195,20 +186,20 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 		 * set the mask here since all threads inherit their signal mask
 		 * from their creator.
 		 */
-		c->signum = comp_defns[i].signum;
-		if (c->signum >= 0) {
+		cp->signum = comp_defns[i].signum;
+		if (cp->signum >= 0) {
 			/*
 			 * Assume ‘signum’ specifies a real-time signal number
 			 * and adjust the value accordingly.
 			 */
-			c->signum += SIGRTMIN;
-			Sigaddset(&signal_set, c->signum);
+			cp->signum += SIGRTMIN;
+			Sigaddset(&sigset, cp->signum);
 		}
 
-		c->sbar = sbar;
+		cp->sbar = sbar;
 	}
 
-	pthread_sigmask(SIG_BLOCK, &signal_set, NULL);
+	pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 }
 
 static void sbar_start(sbar_t *sbar)
@@ -241,6 +232,8 @@ int main(int argc, char *argv[])
 	char pidfile[MAXLEN];
 	FILE *fp;
 	sbar_t sbar;
+	sigset_t sigset;
+	int sig;
 
 	/* NOLINTNEXTLINE(concurrency-mt-unsafe) */
 	while ((opt = getopt(argc, argv, "s")) != -1) {
@@ -256,6 +249,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	/* Save the pid to a file so it’s available to shell commands */
 	Snprintf(pidfile, MAXLEN, "/tmp/%s.pid", argv[0]);
 	fp = Fopen(pidfile, "w");
 	if (fprintf(fp, "%ld", (long)getpid()) < 0)
@@ -265,19 +259,35 @@ int main(int argc, char *argv[])
 	if (!to_stdout)
 		dpy = xOpenDisplay(NULL);
 
-	Signal(SIGINT, terminate);
-	Signal(SIGTERM, terminate);
+	/*
+	 * We want SIGINT and SIGTERM delivered only to the initial thread.  We
+         * mask them here, since the mask will be inherited by new threads, and
+         * unmask them after the threads have been created.
+	 */
+	Sigemptyset(&sigset);
+	Sigaddset(&sigset, SIGINT);
+	Sigaddset(&sigset, SIGTERM);
+	pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 
 	sbar_create(&sbar, N_COMPONENTS, component_defns);
 	sbar_start(&sbar);
 
-	while (!done)
-		Pause();
+	Sigwait(&sigset, &sig);
+	switch (sig) {
+	case SIGINT:
+		Fprintf(stdout, "SIGINT received. Terminating.\n");
+		break;
+	case SIGTERM:
+		Fprintf(stdout, "SIGTERM received. Terminating.\n");
+		break;
+	default:
+		Fprintf(stdout, "Unexpected signal received. Terminating.\n");
+	}
 
 	if (!to_stdout) {
 		/* NOLINTNEXTLINE(clang-analyzer-core.NullDereference) */
 		xStoreName(dpy, DefaultRootWindow(dpy), NULL);
-		xCloseDisplay(dpy);
+		XCloseDisplay(dpy);
 	}
 
 	if (remove(pidfile) < 0)
