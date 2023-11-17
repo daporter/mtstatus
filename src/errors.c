@@ -371,12 +371,6 @@ void xStoreName(Display *display, Window w, _Xconst char *window_name)
 		unix_error("XStoreName");
 }
 
-void xCloseDisplay(Display *display)
-{
-	if (XCloseDisplay(display) == 0)
-		unix_error("XCloseDisplay");
-}
-
 void xFlush(Display *display)
 {
 	if (XFlush(display) == 0)

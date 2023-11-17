@@ -69,5 +69,4 @@ void Pthread_attr_setdetachstate(pthread_attr_t *attr, int detachstate);
  */
 Display *xOpenDisplay(_Xconst char *display_name);
 void xStoreName(Display *display, Window w, _Xconst char *window_name);
-void xCloseDisplay(Display *display);
 void xFlush(Display *display);
