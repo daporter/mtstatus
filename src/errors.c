@@ -184,7 +184,7 @@ FILE *Fopen(const char *filename, const char *mode)
 	FILE *fp;
 
 	if ((fp = fopen(filename, mode)) == NULL)
-		unix_error("Fopen error");
+		unix_error("Fopen error: %s", filename);
 
 	return fp;
 }
