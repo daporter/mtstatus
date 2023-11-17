@@ -3,6 +3,7 @@
 #include "util.h"
 
 #include <assert.h>
+#include <libgen.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -243,7 +244,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Save the pid to a file so it’s available to shell commands */
-	Snprintf(pidfile, MAXLEN, "/tmp/%s.pid", argv[0]);
+	Snprintf(pidfile, MAXLEN, "/tmp/%s.pid", basename(argv[0]));
 	fp = Fopen(pidfile, "w");
 	if (fprintf(fp, "%ld", (long)getpid()) < 0)
 		app_error("Unable to create PID file");
