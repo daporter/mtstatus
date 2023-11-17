@@ -11,6 +11,8 @@ CFLAGS	 = -std=c17 -pthread -Og -g3 -Wall -Wextra -Wpedantic -Wshadow -Werror -f
 LDFLAGS  =
 LDLIBS	 = -lX11
 
+PARALLEL = parallel-moreutils
+
 .PHONY: all format check clean
 
 all: $(BIN)
@@ -22,13 +24,13 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 $(BINDIR) $(OBJDIR):
-	mkdir -p $@
+	@mkdir -pv $@
 
 format:
-	parallel-moreutils clang-format -i -- $(wildcard $(SRCDIR)/*.[ch])
+	$(PARALLEL) clang-format -i -- $(wildcard $(SRCDIR)/*.[ch])
 
 check:
-	parallel-moreutils clang-tidy --quiet -- $(SRCS)
+	$(PARALLEL) clang-tidy --quiet -- $(wildcard $(SRCDIR)/*.[ch])
 
 clean:
 	@$(RM) -rv $(OBJDIR) $(BIN) core
