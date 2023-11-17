@@ -57,6 +57,14 @@ DerivePointerAlignment: false
 DisableFormat: false
 ExperimentalAutoDetectBinPacking: false
 FixNamespaceComments: false
+
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:           '^"'
+    Priority:        1
+  - Regex:           '.*'
+    Priority:        2
+
 IndentCaseLabels: false
 IndentGotoLabels: false
 IndentPPDirectives: None
@@ -86,7 +94,6 @@ PenaltyReturnTypeOnItsOwnLine: 60
 PointerAlignment: Right
 ReflowComments: false
 SeparateDefinitionBlocks: Always
-SortIncludes: Never
 SortUsingDeclarations: false
 SpaceAfterCStyleCast: false
 SpaceAfterTemplateKeyword: true

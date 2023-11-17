@@ -1,3 +1,10 @@
+#ifndef ERRORS_H
+#define ERRORS_H
+
+#include <X11/Xlib.h>
+#include <signal.h>
+#include <stdio.h>
+
 /*
  * Error-handling functions.
  */
@@ -70,3 +77,5 @@ void Pthread_attr_setdetachstate(pthread_attr_t *attr, int detachstate);
 Display *xOpenDisplay(_Xconst char *display_name);
 void xStoreName(Display *display, Window w, _Xconst char *window_name);
 void xFlush(Display *display);
+
+#endif

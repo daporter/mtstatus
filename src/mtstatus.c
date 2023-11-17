@@ -1,20 +1,13 @@
-#include <X11/Xlib.h>
-#include <assert.h>
-#include <pthread.h>
-#include <signal.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <strings.h>
-#include <unistd.h>
-
-#include "component.h"
 #include "config.h"
 #include "errors.h"
 #include "util.h"
+
+#include <assert.h>
+#include <pthread.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 #define N_COMPONENTS ((sizeof component_defns) / (sizeof(sbar_comp_defn_t)))
 

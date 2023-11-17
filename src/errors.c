@@ -2,19 +2,15 @@
  * Error-handling functions.
  */
 
-#include <X11/Xlib.h>
+#include "errors.h"
+
 #include <errno.h>
 #include <pthread.h>
-#include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
-#include <stddef.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-#include "errors.h"
 
 #define BUF_SIZE 500
 

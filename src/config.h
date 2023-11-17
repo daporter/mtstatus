@@ -1,3 +1,10 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+#include "component.h"
+
+#include <time.h>
+
 /* The components that make up the status bar.
 
    Each element consists of an updater function and sleep interval (in
@@ -40,3 +47,5 @@ const sbar_comp_defn_t component_defns[] = {
 	{ component_datetime,   "%a %d %b %R",  30,        -1 },
 };
 /* clang-format on */
+
+#endif
