@@ -20,16 +20,19 @@
 
 static void verr(bool use_err, int err, const char *fmt, va_list ap)
 {
-	char msg[BUF_SIZE], err_msg[BUF_SIZE];
+	char *msgp;
+	char err_msg[BUF_SIZE];
 
-	// NOLINTNEXTLINE(clang-analyzer-valist.Uninitialized)
-	(void)vsnprintf(msg, BUF_SIZE, fmt, ap);
+	if (vasprintf(&msgp, fmt, ap) < 0)
+		return;
 
 	if (use_err) {
-		strerror_r(err, err_msg, BUF_SIZE);
-		(void)fprintf(stderr, "ERROR -- %s: %s\n", msg, err_msg);
+		strerror_r(err, err_msg, sizeof err_msg);
+		(void)fprintf(stderr, "ERROR -- %s: %s\n", msgp, err_msg);
 	} else
-		(void)fprintf(stderr, "ERROR -- %s\n", msg);
+		(void)fprintf(stderr, "ERROR -- %s\n", msgp);
+
+	free(msgp);
 }
 
 /* Unix-style warning */
@@ -145,13 +148,6 @@ void Sigwait(const sigset_t *restrict set, int *restrict sig)
 		posix_error(status, "Sigwait error");
 }
 
-/* Memory mapping wrappers */
-
-void *Memcpy(void *dest, const void *src, size_t n)
-{
-	return memcpy(dest, src, n);
-}
-
 /* Wrappers for dynamic storage allocation functions */
 
 void *Malloc(size_t size)
@@ -213,6 +209,8 @@ int Snprintf(char *str, size_t size, const char *fmt, ...)
 	int ret;
 
 	va_start(ap, fmt);
+
+	// NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
 	ret = vsnprintf(str, size, fmt, ap);
 	va_end(ap);
 

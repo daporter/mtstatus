@@ -77,14 +77,17 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 static void sbar_component_update(const component_t *c)
 {
 	char tmpbuf[MAXLEN];
+	size_t len;
 
 	c->update(tmpbuf, MAXLEN, c->args, no_val_str);
+	len = strlen(tmpbuf);
 
 	/*
 	 * Maintain the status bar "dirty" invariant.
 	 */
 	Pthread_mutex_lock(&c->sbar->mutex);
-	Memcpy(c->buf, tmpbuf, MAXLEN);
+	// NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+	memcpy(c->buf, tmpbuf, len + 1);
 	c->sbar->dirty = true;
 	Pthread_cond_signal(&c->sbar->dirty_cond);
 	Pthread_mutex_unlock(&c->sbar->mutex);

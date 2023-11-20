@@ -6,7 +6,6 @@ Checks: >-
   -bugprone-easily-swappable-parameters,
   cert-*,
   clang-analyzer-*,
-  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
   concurrency-*,
   google-*,
   -google-readability-braces-around-statements,
