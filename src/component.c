@@ -68,10 +68,11 @@ void component_notmuch(char *buf, const int bufsize, const char *UNUSED(args),
 	char output[bufsize];
 	long count;
 
+	Snprintf(buf, bufsize, " %s", no_val_str);
+
 	if (!run_cmd(output, bufsize,
 		     "notmuch count 'tag:unread NOT tag:archived'")) {
 		unix_warn("[notmuch] Failed to run notmuch command");
-		Snprintf(buf, bufsize, "  %s", no_val_str);
 		return;
 	}
 
@@ -79,13 +80,12 @@ void component_notmuch(char *buf, const int bufsize, const char *UNUSED(args),
 	count = strtol(output, NULL, 0);
 	if (errno != 0) {
 		unix_warn("[notmuch] Failed to convert command output");
-		Snprintf(buf, bufsize, "  %s", no_val_str);
 		return;
 	}
 	if (count == 0)
-		Snprintf(buf, bufsize, "  %ld", count);
+		Snprintf(buf, bufsize, " %ld", count);
 	else
-		Snprintf(buf, bufsize, "  %ld", count);
+		Snprintf(buf, bufsize, " %ld", count);
 }
 
 void component_load_avg(char *buf, const int bufsize, const char *UNUSED(args),
@@ -94,49 +94,61 @@ void component_load_avg(char *buf, const int bufsize, const char *UNUSED(args),
 	double avgs[1];
 	char output[bufsize];
 
+	Snprintf(buf, bufsize, " %s", no_val_str);
+
 	if (getloadavg(avgs, 1) < 0) {
 		unix_warn("[load_avg] Failed to obtain load average");
-		Snprintf(buf, bufsize, "  %s", no_val_str);
 		return;
 	}
 
 	Snprintf(output, LEN(output), "%.2f", avgs[0]);
-	Snprintf(buf, bufsize, "  %s", output);
+	Snprintf(buf, bufsize, " %s", output);
 }
 
-void component_ram_free(char *buf, const int bufsize, const char *UNUSED(args),
-			const char *no_val_str)
+void component_mem_avail(char *buf, const int bufsize, const char *UNUSED(args),
+			 const char *no_val_str)
 {
-	const char meminfo[] = "/proc/meminfo";
+	const char *meminfo = "/proc/meminfo";
+	const char *target = "MemAvailable";
 	FILE *fp;
-	char total_str[bufsize], free_str[bufsize];
-	uintmax_t free;
+	char line[bufsize], val_str[bufsize];
+	char *ret, *token, *s, *saveptr;
+	int i;
+	uintmax_t val;
+
+	Snprintf(buf, bufsize, " %s", no_val_str);
 
 	if ((fp = fopen(meminfo, "r")) == NULL) {
-		unix_warn("[ram_free] Unable to open %s", meminfo);
-		Snprintf(buf, bufsize, "  %s", no_val_str);
+		unix_warn("[mem_avail] Unable to open %s", meminfo);
 		return;
 	}
-	if (fscanf(fp,
-		   "MemTotal: %s kB\n"
-		   "MemFree: %s kB\n",
-		   total_str, free_str) == EOF) {
-		unix_warn("[ram_free] Unable to parse %s", meminfo);
-		Snprintf(buf, bufsize, "  %s", no_val_str);
+
+	while ((ret = fgets(line, bufsize, fp)) != NULL)
+		if (strstr(line, target) != NULL)
+			break;
+	if (ret == NULL) { /* EOF reached */
+		app_warn("[mem_avail] %s not found in %s", target, meminfo);
 		Fclose(fp);
 		return;
 	}
+
+	for (i = 0, s = line; i < 2; i++, s = NULL)
+		if ((token = strtok_r(s, " ", &saveptr)) == NULL) {
+			app_warn("[mem_avail] Unable to parse line: %s", line);
+			Fclose(fp);
+			return;
+		}
+
 	Fclose(fp);
 
-	if ((free = strtoumax(free_str, NULL, 0)) == 0 || free == INTMAX_MAX ||
-	    free == UINTMAX_MAX) {
-		app_warn("[ram_free] Unable to convert value %s", free_str);
-		Snprintf(buf, bufsize, "  %s", no_val_str);
+	if ((val = strtoumax(token, NULL, 0)) == 0 || val == INTMAX_MAX ||
+	    val == UINTMAX_MAX) {
+		app_warn("[mem_avail] Unable to convert value %s", token);
 		return;
 	}
 
-	util_fmt_human(free_str, LEN(free_str), free * K_IEC, K_IEC);
-	Snprintf(buf, bufsize, "  %s", free_str);
+	util_fmt_human(val_str, LEN(val_str), val * K_IEC, K_IEC);
+	Snprintf(buf, bufsize, " %s", val_str);
 }
 
 void component_disk_free(char *buf, const int bufsize, const char *path,
@@ -145,9 +157,10 @@ void component_disk_free(char *buf, const int bufsize, const char *path,
 	struct statvfs fs;
 	char output[bufsize];
 
+	Snprintf(buf, bufsize, "󰋊 %s", no_val_str);
+
 	if (statvfs(path, &fs) < 0) {
 		unix_warn("[disk_free] statvfs '%s':", path);
-		Snprintf(buf, bufsize, "󰋊 %s", no_val_str);
 		return;
 	}
 
@@ -162,17 +175,17 @@ void component_datetime(char *buf, const int bufsize, const char *date_fmt,
 	struct tm now;
 	char output[bufsize];
 
+	Snprintf(buf, bufsize, " %s", no_val_str);
+
 	if ((t = time(NULL)) == -1) {
 		unix_warn("[datetime] Unable to obtain the current time");
-		Snprintf(buf, bufsize, "  %s", no_val_str);
 		return;
 	}
 	if (localtime_r(&t, &now) == NULL) {
 		unix_warn("[datetime] Unable to determine local time");
-		Snprintf(buf, bufsize, "  %s", no_val_str);
 		return;
 	}
 	if (strftime(output, LEN(output), date_fmt, &now) == 0)
 		unix_warn("[datetime] Unable to format time");
-	Snprintf(buf, bufsize, "  %s", output);
+	Snprintf(buf, bufsize, " %s", output);
 }
