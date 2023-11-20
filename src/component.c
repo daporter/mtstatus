@@ -41,6 +41,7 @@ void component_keyb_ind(char *buf, const int bufsize, const char *UNUSED(args),
 	Display *dpy;
 	XKeyboardState state;
 	bool caps_on, numlock_on;
+	char *val;
 
 	if (!(dpy = XOpenDisplay(NULL))) {
 		unix_warn("XOpenDisplay: Failed to open display");
@@ -51,15 +52,16 @@ void component_keyb_ind(char *buf, const int bufsize, const char *UNUSED(args),
 
 	caps_on = state.led_mask & (1 << 0);
 	numlock_on = state.led_mask & (1 << 1);
+	if (caps_on && numlock_on)
+		val = "Caps Num";
+	else if (caps_on)
+		val = "Caps";
+	else if (numlock_on)
+		val = "Num";
+	else
+		val = "";
 
-	buf[0] = '\0';
-	if (caps_on) {
-		if (numlock_on)
-			Snprintf(buf, bufsize, "Caps Num");
-		else
-			Snprintf(buf, bufsize, "Caps");
-	} else if (numlock_on)
-		Snprintf(buf, bufsize, "Num");
+	Snprintf(buf, bufsize, val);
 }
 
 void component_notmuch(char *buf, const int bufsize, const char *UNUSED(args),
