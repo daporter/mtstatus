@@ -243,15 +243,16 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	/* Save the pid to a file so it’s available to shell commands */
-	Snprintf(pidfile, MAXLEN, "/tmp/%s.pid", basename(argv[0]));
-	fp = Fopen(pidfile, "w");
-	if (fprintf(fp, "%ld", (long)getpid()) < 0)
-		app_error("Unable to create PID file");
-	Fclose(fp);
+	if (!to_stdout) {
+		/* Save the pid to a file so it’s available to shell commands */
+		Snprintf(pidfile, MAXLEN, "/tmp/%s.pid", basename(argv[0]));
+		fp = Fopen(pidfile, "w");
+		if (fprintf(fp, "%ld", (long)getpid()) < 0)
+			app_error("Unable to create PID file");
+		Fclose(fp);
 
-	if (!to_stdout)
 		dpy = xOpenDisplay(NULL);
+	}
 
 	/*
 	 * We want SIGINT and SIGTERM delivered only to the initial thread.  We
@@ -282,10 +283,10 @@ int main(int argc, char *argv[])
 		/* NOLINTNEXTLINE(clang-analyzer-core.NullDereference) */
 		xStoreName(dpy, DefaultRootWindow(dpy), NULL);
 		XCloseDisplay(dpy);
-	}
 
-	if (remove(pidfile) < 0)
-		unix_warn("Unable to remove %s", pidfile);
+		if (remove(pidfile) < 0)
+			unix_warn("Unable to remove %s", pidfile);
+	}
 
 	return EXIT_SUCCESS;
 }
