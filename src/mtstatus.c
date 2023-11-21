@@ -14,7 +14,7 @@
 
 #define MAXLEN 128
 
-typedef struct component {
+typedef struct {
 	unsigned id;
 	char *buf;
 	sbar_updater_t update;
@@ -24,12 +24,12 @@ typedef struct component {
 	pthread_t thr_repeating;
 	pthread_t thr_async;
 	struct sbar *sbar;
-} component_t;
+} sbar_comp_t;
 
 typedef struct sbar {
-	char *component_bufs;
+	char *comp_bufs;
 	uint8_t ncomponents;
-	component_t *components;
+	sbar_comp_t *components;
 	bool dirty;
 	pthread_mutex_t mutex;
 	pthread_cond_t dirty_cond;
@@ -74,7 +74,7 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 	Pthread_mutex_unlock(&sbar->mutex);
 }
 
-static void sbar_component_update(const component_t *c)
+static void sbar_component_update(const sbar_comp_t *c)
 {
 	char tmpbuf[MAXLEN];
 	size_t len;
@@ -115,7 +115,7 @@ static void *thread_flush(void *arg)
 
 static void *thread_repeating(void *arg)
 {
-	const component_t *c = (component_t *)arg;
+	const sbar_comp_t *c = (sbar_comp_t *)arg;
 
 	while (true) {
 		Sleep(c->interval);
@@ -126,7 +126,7 @@ static void *thread_repeating(void *arg)
 
 static void *thread_async(void *arg)
 {
-	component_t *c = (component_t *)arg;
+	sbar_comp_t *c = (sbar_comp_t *)arg;
 	sigset_t sigset;
 	int sig;
 
@@ -144,7 +144,7 @@ static void *thread_async(void *arg)
 
 static void *thread_once(void *arg)
 {
-	const component_t *c = (component_t *)arg;
+	const sbar_comp_t *c = (sbar_comp_t *)arg;
 
 	sbar_component_update(c);
 	return NULL;
@@ -153,13 +153,12 @@ static void *thread_once(void *arg)
 static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 			const sbar_comp_defn_t *comp_defns)
 {
-	component_t *cp;
+	sbar_comp_t *cp;
 	sigset_t sigset;
 
-	sbar->component_bufs =
-		Calloc(ncomponents * (size_t)MAXLEN, sizeof(char));
+	sbar->comp_bufs = Calloc(ncomponents * (size_t)MAXLEN, sizeof(char));
 	sbar->ncomponents = ncomponents;
-	sbar->components = Calloc(ncomponents, sizeof(component_t));
+	sbar->components = Calloc(ncomponents, sizeof(sbar_comp_t));
 	sbar->dirty = false;
 	Pthread_mutex_init(&sbar->mutex, NULL);
 	Pthread_cond_init(&sbar->dirty_cond, NULL);
@@ -177,7 +176,7 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 		cp = &sbar->components[i];
 
 		cp->id = i;
-		cp->buf = sbar->component_bufs + ((size_t)MAXLEN * i);
+		cp->buf = sbar->comp_bufs + ((size_t)MAXLEN * i);
 		/* NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.strcpy) */
 		strcpy(cp->buf, no_val_str);
 		cp->update = comp_defns[i].update;
@@ -203,7 +202,7 @@ static void sbar_start(sbar_t *sbar)
 {
 	pthread_attr_t attr;
 	pthread_t tid;
-	component_t *c;
+	sbar_comp_t *c;
 
 	Pthread_attr_init(&attr);
 	Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
