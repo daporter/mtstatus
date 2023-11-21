@@ -273,13 +273,13 @@ int main(int argc, char *argv[])
 	Sigwait(&sigset, &sig);
 	switch (sig) {
 	case SIGINT:
-		Fprintf(stdout, "SIGINT received. Terminating.\n");
+		puts("SIGINT received. Terminating.\n");
 		break;
 	case SIGTERM:
-		Fprintf(stdout, "SIGTERM received. Terminating.\n");
+		puts("SIGTERM received. Terminating.\n");
 		break;
 	default:
-		Fprintf(stdout, "Unexpected signal received. Terminating.\n");
+		puts("Unexpected signal received. Terminating.\n");
 	}
 
 	if (!to_stdout) {
