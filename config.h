@@ -12,8 +12,8 @@
 /*
  * Function that returns an updated value for a status bar component.
  */
-typedef void (*sbar_updater_t)(char *buf, const int bufsize, const char *args,
-			       const char *no_val_str);
+typedef void (*sbar_updater_t)(char *buf, const size_t bufsize,
+			       const char *args, const char *no_val_str);
 
 typedef struct {
 	const sbar_updater_t update;

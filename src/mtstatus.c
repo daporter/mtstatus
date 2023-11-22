@@ -89,18 +89,18 @@ void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 void sbar_component_update(const sbar_comp_t *c)
 {
 	char tmpbuf[MAXLEN];
-	size_t len;
 	int r;
 
-	c->update(tmpbuf, MAXLEN, c->args, no_val_str);
-	len = strlen(tmpbuf);
+	c->update(tmpbuf, sizeof(tmpbuf), c->args, no_val_str);
 
 	/*
 	 * Maintain the status bar "dirty" invariant.
 	 */
 	if ((r = pthread_mutex_lock(&c->sbar->mutex)) != 0)
 		die(r);
-	memcpy(c->buf, tmpbuf, len + 1);
+	static_assert(MAXLEN >= sizeof(tmpbuf),
+		      "size of component buffer < sizeof(tmpbuf)");
+	memcpy(c->buf, tmpbuf, sizeof(tmpbuf));
 	c->sbar->dirty = true;
 	if ((r = pthread_cond_signal(&c->sbar->dirty_cond)) != 0)
 		die(r);
@@ -165,13 +165,12 @@ void *thread_async(void *arg)
 void *thread_once(void *arg)
 {
 	const sbar_comp_t *c = (sbar_comp_t *)arg;
-
 	sbar_component_update(c);
 	return NULL;
 }
 
 void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
-			const sbar_comp_defn_t *comp_defns)
+		 const sbar_comp_defn_t *comp_defns)
 {
 	sbar_comp_t *cp;
 	sigset_t sigset;
@@ -205,7 +204,9 @@ void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 
 		cp->id = i;
 		cp->buf = sbar->comp_bufs + ((size_t)MAXLEN * i);
-		strcpy(cp->buf, no_val_str);
+		static_assert(sizeof(no_val_str) <= MAXLEN,
+			      "no_val_str too large");
+		memcpy(cp->buf, no_val_str, sizeof(no_val_str));
 		cp->update = comp_defns[i].update;
 		cp->args = comp_defns[i].args;
 		cp->interval = comp_defns[i].interval;
@@ -249,14 +250,14 @@ void sbar_start(sbar_t *sbar)
 		if ((r = pthread_create(&tid, &attr, thread_once, c)) != 0)
 			die(r);
 
-		if (c->interval >= 0)
-			if ((r = pthread_create(&c->thr_repeating, &attr,
-						thread_repeating, c)) != 0)
-				die(r);
-		if (c->signum >= 0)
-			if ((r = pthread_create(&c->thr_async, &attr,
-						thread_async, c)) != 0)
-				die(r);
+		if (c->interval >= 0 &&
+		    (r = pthread_create(&c->thr_repeating, &attr,
+					thread_repeating, c)) != 0)
+			die(r);
+		if (c->signum >= 0 &&
+		    (r = pthread_create(&c->thr_async, &attr, thread_async,
+					c)) != 0)
+			die(r);
 	}
 }
 
@@ -333,13 +334,10 @@ int main(int argc, char *argv[])
 	}
 
 	if (!to_stdout) {
-		/* NOLINTNEXTLINE(clang-analyzer-core.NullDereference) */
 		XStoreName(dpy, DefaultRootWindow(dpy), NULL);
 		XCloseDisplay(dpy);
 
 		if (remove(pidfile) < 0)
 			fprintf(stderr, "Unable to remove %s", pidfile);
 	}
-
-	/* return EXIT_SUCCESS; */
 }

@@ -1,4 +1,5 @@
 #include <X11/Xlib.h>
+#include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdbool.h>
@@ -8,7 +9,7 @@
 #include <sys/statvfs.h>
 #include <time.h>
 
-int run_cmd(char *buf, const int bufsize, const char *cmd)
+int run_cmd(char *buf, const size_t bufsize, const char *cmd)
 {
 	char *p;
 	FILE *fp;
@@ -30,7 +31,7 @@ int run_cmd(char *buf, const int bufsize, const char *cmd)
 	return 0;
 }
 
-void component_keyb_ind(char *buf, const int bufsize, const char *args,
+void component_keyb_ind(char *buf, const size_t bufsize, const char *args,
 			const char *no_val_str)
 {
 	(void)args;
@@ -58,10 +59,12 @@ void component_keyb_ind(char *buf, const int bufsize, const char *args,
 	else
 		val = "";
 
-	snprintf(buf, bufsize, "%s", val);
+	size_t len = strlen(val);
+	assert(bufsize >= len + 1);
+	memcpy(buf, val, len + 1);
 }
 
-void component_notmuch(char *buf, const int bufsize, const char *args,
+void component_notmuch(char *buf, const size_t bufsize, const char *args,
 		       const char *no_val_str)
 {
 	(void)args;
@@ -91,7 +94,7 @@ void component_notmuch(char *buf, const int bufsize, const char *args,
 		snprintf(buf, bufsize, " %ld", count);
 }
 
-void component_mem_avail(char *buf, const int bufsize, const char *args,
+void component_mem_avail(char *buf, const size_t bufsize, const char *args,
 			 const char *no_val_str)
 {
 	(void)args;
@@ -134,11 +137,11 @@ void component_mem_avail(char *buf, const int bufsize, const char *args,
 		return;
 	}
 
-	util_fmt_human(val_str, LEN(val_str), val * K_IEC, K_IEC);
+	util_fmt_human(val_str, sizeof(val_str), val * K_IEC, K_IEC);
 	snprintf(buf, bufsize, " %s", val_str);
 }
 
-void component_disk_free(char *buf, const int bufsize, const char *path,
+void component_disk_free(char *buf, const size_t bufsize, const char *path,
 			 const char *no_val_str)
 {
 	struct statvfs fs;
@@ -153,11 +156,11 @@ void component_disk_free(char *buf, const int bufsize, const char *path,
 		return;
 	}
 
-	util_fmt_human(output, LEN(output), fs.f_frsize * fs.f_bavail, K_IEC);
+	util_fmt_human(output, sizeof(output), fs.f_frsize * fs.f_bavail, K_IEC);
 	snprintf(buf, bufsize, "󰋊 %s", output);
 }
 
-void component_datetime(char *buf, const int bufsize, const char *date_fmt,
+void component_datetime(char *buf, const size_t bufsize, const char *date_fmt,
 			const char *no_val_str)
 {
 	time_t t;
@@ -176,7 +179,7 @@ void component_datetime(char *buf, const int bufsize, const char *date_fmt,
 		fprintf(stderr, "Unable to determine local time: %s", errbuf);
 		return;
 	}
-	if (strftime(output, LEN(output), date_fmt, &now) == 0)
+	if (strftime(output, sizeof(output), date_fmt, &now) == 0)
 		fputs("Unable to format time", stderr);
 	snprintf(buf, bufsize, " %s", output);
 }
