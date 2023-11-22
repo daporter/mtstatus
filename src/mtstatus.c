@@ -1,6 +1,3 @@
-#include "../config.h"
-#include "util.h"
-
 #include <X11/Xlib.h>
 #include <assert.h>
 #include <errno.h>
@@ -8,6 +5,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,19 +37,19 @@ typedef struct sbar {
 	pthread_t thread;
 } sbar_t;
 
-static const char divider[] = "  ";
-static const char no_val_str[] = "n/a";
+const char divider[] = "  ";
+const char no_val_str[] = "n/a";
 
-static bool to_stdout = false;
-static Display *dpy = NULL;
+bool to_stdout = false;
+Display *dpy = NULL;
 
-static void die(int code)
+void die(int code)
 {
 	fprintf(stderr, "mtstatus: fatal: %s\n", strerror(code));
 	exit(EXIT_FAILURE);
 }
 
-static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
+void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 {
 	int i = 0;
 	char *ptr = buf;
@@ -88,7 +86,7 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 		die(r);
 }
 
-static void sbar_component_update(const sbar_comp_t *c)
+void sbar_component_update(const sbar_comp_t *c)
 {
 	char tmpbuf[MAXLEN];
 	size_t len;
@@ -110,7 +108,7 @@ static void sbar_component_update(const sbar_comp_t *c)
 		die(r);
 }
 
-static void *thread_flush(void *arg)
+void *thread_flush(void *arg)
 {
 	sbar_t *sbar = (sbar_t *)arg;
 	char status[N_COMPONENTS * MAXLEN];
@@ -132,7 +130,7 @@ static void *thread_flush(void *arg)
 	return NULL;
 }
 
-static void *thread_repeating(void *arg)
+void *thread_repeating(void *arg)
 {
 	const sbar_comp_t *c = (sbar_comp_t *)arg;
 
@@ -143,7 +141,7 @@ static void *thread_repeating(void *arg)
 	return NULL;
 }
 
-static void *thread_async(void *arg)
+void *thread_async(void *arg)
 {
 	sbar_comp_t *c = (sbar_comp_t *)arg;
 	sigset_t sigset;
@@ -164,7 +162,7 @@ static void *thread_async(void *arg)
 	return NULL;
 }
 
-static void *thread_once(void *arg)
+void *thread_once(void *arg)
 {
 	const sbar_comp_t *c = (sbar_comp_t *)arg;
 
@@ -172,7 +170,7 @@ static void *thread_once(void *arg)
 	return NULL;
 }
 
-static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
+void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 			const sbar_comp_defn_t *comp_defns)
 {
 	sbar_comp_t *cp;
@@ -229,7 +227,7 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 		die(r);
 }
 
-static void sbar_start(sbar_t *sbar)
+void sbar_start(sbar_t *sbar)
 {
 	pthread_attr_t attr;
 	pthread_t tid;
@@ -262,7 +260,7 @@ static void sbar_start(sbar_t *sbar)
 	}
 }
 
-static void usage(FILE *f)
+void usage(FILE *f)
 {
 	fputs("Usage: mtstatus [-h] [-s]\n", f);
 	fputs("  -h        Print this help message and exit\n", f);

@@ -1,8 +1,6 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include "src/component.h"
-
 #include <time.h>
 
 /* The components that make up the status bar.

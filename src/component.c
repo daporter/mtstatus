@@ -1,10 +1,3 @@
-/* Make the POSIX version of ‘strerror_r’ available */
-#define _POSIX_C_SOURCE 200112L
-
-#include "component.h"
-
-#include "util.h"
-
 #include <X11/Xlib.h>
 #include <errno.h>
 #include <inttypes.h>
@@ -15,7 +8,7 @@
 #include <sys/statvfs.h>
 #include <time.h>
 
-static int run_cmd(char *buf, const int bufsize, const char *cmd)
+int run_cmd(char *buf, const int bufsize, const char *cmd)
 {
 	char *p;
 	FILE *fp;
