@@ -266,6 +266,7 @@ void sbar_start(sbar_t *sbar)
 
 void usage(FILE *f)
 {
+	assert(f != NULL);
 	fputs("Usage: mtstatus [-h] [-s]\n", f);
 	fputs("  -h        Print this help message and exit\n", f);
 	fputs("  -s        Output to stdout\n", f);

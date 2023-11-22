@@ -2,7 +2,7 @@
 
 CC	 = cc
 CPPFLAGS =
-CFLAGS	 = -std=c17 -pthread -Og -g3 -Wall -Wextra -Wpedantic -Wshadow -Werror -fanalyzer
+CFLAGS	 = -std=c17 -pthread -Og -g3 -Wall -Wextra -Wpedantic -Wshadow -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fanalyzer
 LDFLAGS  =
 LDLIBS	 = -lX11
 
