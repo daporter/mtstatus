@@ -90,8 +90,11 @@ void sbar_component_update(const sbar_comp_t *c)
 {
 	char tmpbuf[MAXLEN];
 	int r;
+	comp_ret_t ret;
 
-	c->update(tmpbuf, sizeof(tmpbuf), c->args, no_val_str);
+	ret = c->update(tmpbuf, sizeof(tmpbuf), c->args, no_val_str);
+	if (!ret.ok)
+		fprintf(stderr, "Error updating component: %s\n", ret.message);
 
 	/*
 	 * Maintain the status bar "dirty" invariant.

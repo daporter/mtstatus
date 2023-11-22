@@ -12,7 +12,7 @@
 /*
  * Function that returns an updated value for a status bar component.
  */
-typedef void (*sbar_updater_t)(char *buf, const size_t bufsize,
+typedef comp_ret_t (*sbar_updater_t)(char *buf, const size_t bufsize,
 			       const char *args, const char *no_val_str);
 
 typedef struct {

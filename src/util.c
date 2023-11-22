@@ -14,7 +14,7 @@ char *util_cat(char *dest, const char *end, const char *str)
 	return dest;
 }
 
-int util_fmt_human(char *buf, int len, uintmax_t num, int base)
+int util_fmt_human(char *buf, size_t len, uintmax_t num, int base)
 {
 	double scaled;
 	size_t prefixlen;
