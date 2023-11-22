@@ -1,11 +1,14 @@
-#include "config.h"
-#include "errors.h"
+#include "../config.h"
 #include "util.h"
 
+#include <X11/Xlib.h>
 #include <assert.h>
+#include <errno.h>
 #include <libgen.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -42,19 +45,29 @@ static const char no_val_str[] = "n/a";
 static bool to_stdout = false;
 static Display *dpy = NULL;
 
+static void die(int code)
+{
+	fprintf(stderr, "mtstatus: fatal: %s\n", strerror(code));
+	exit(EXIT_FAILURE);
+}
+
 static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 {
-	uint8_t i = 0;
+	int i = 0;
 	char *ptr = buf;
 	char *end = buf + bufsize;
 	const char *cbuf;
+	int r;
 
 	/*
 	 * Maintain the status bar "dirty" invariant.
 	 */
-	Pthread_mutex_lock(&sbar->mutex);
+	if ((r = pthread_mutex_lock(&sbar->mutex)) != 0)
+		die(r);
 	while (!sbar->dirty)
-		Pthread_cond_wait(&sbar->dirty_cond, &sbar->mutex);
+		if ((r = pthread_cond_wait(&sbar->dirty_cond, &sbar->mutex)) !=
+		    0)
+			die(r);
 
 	for (i = 0; (ptr < end) && (i < sbar->ncomponents - 1); i++) {
 		cbuf = sbar->components[i].buf;
@@ -71,13 +84,15 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 	*ptr = '\0';
 
 	sbar->dirty = false;
-	Pthread_mutex_unlock(&sbar->mutex);
+	if ((r = pthread_mutex_unlock(&sbar->mutex)) != 0)
+		die(r);
 }
 
 static void sbar_component_update(const sbar_comp_t *c)
 {
 	char tmpbuf[MAXLEN];
 	size_t len;
+	int r;
 
 	c->update(tmpbuf, MAXLEN, c->args, no_val_str);
 	len = strlen(tmpbuf);
@@ -85,12 +100,14 @@ static void sbar_component_update(const sbar_comp_t *c)
 	/*
 	 * Maintain the status bar "dirty" invariant.
 	 */
-	Pthread_mutex_lock(&c->sbar->mutex);
-	// NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+	if ((r = pthread_mutex_lock(&c->sbar->mutex)) != 0)
+		die(r);
 	memcpy(c->buf, tmpbuf, len + 1);
 	c->sbar->dirty = true;
-	Pthread_cond_signal(&c->sbar->dirty_cond);
-	Pthread_mutex_unlock(&c->sbar->mutex);
+	if ((r = pthread_cond_signal(&c->sbar->dirty_cond)) != 0)
+		die(r);
+	if ((r = pthread_mutex_unlock(&c->sbar->mutex)) != 0)
+		die(r);
 }
 
 static void *thread_flush(void *arg)
@@ -102,11 +119,13 @@ static void *thread_flush(void *arg)
 		sbar_flush_on_dirty(sbar, status, LEN(status));
 
 		if (to_stdout) {
-			Puts(status);
-			Fflush(stdout);
+			if (puts(status) == EOF)
+				die(errno);
+			if (fflush(stdout) == EOF)
+				die(errno);
 		} else {
-			xStoreName(dpy, DefaultRootWindow(dpy), status);
-			xFlush(dpy);
+			XStoreName(dpy, DefaultRootWindow(dpy), status);
+			XFlush(dpy);
 		}
 	}
 
@@ -118,7 +137,7 @@ static void *thread_repeating(void *arg)
 	const sbar_comp_t *c = (sbar_comp_t *)arg;
 
 	while (true) {
-		Sleep(c->interval);
+		sleep(c->interval);
 		sbar_component_update(c);
 	}
 	return NULL;
@@ -128,13 +147,16 @@ static void *thread_async(void *arg)
 {
 	sbar_comp_t *c = (sbar_comp_t *)arg;
 	sigset_t sigset;
-	int sig;
+	int sig, r;
 
-	Sigemptyset(&sigset);
-	Sigaddset(&sigset, c->signum);
+	if (sigemptyset(&sigset) < 0)
+		die(errno);
+	if (sigaddset(&sigset, c->signum) < 0)
+		die(errno);
 
 	while (true) {
-		Sigwait(&sigset, &sig);
+		if ((r = sigwait(&sigset, &sig)) == -1)
+			die(r);
 		assert(sig == c->signum && "unexpected signal received");
 		sbar_component_update(c);
 	}
@@ -155,13 +177,20 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 {
 	sbar_comp_t *cp;
 	sigset_t sigset;
+	int r;
 
-	sbar->comp_bufs = Calloc(ncomponents * (size_t)MAXLEN, sizeof(char));
+	sbar->comp_bufs = calloc(ncomponents * (size_t)MAXLEN, sizeof(char));
+	if (sbar->comp_bufs == NULL)
+		die(errno);
 	sbar->ncomponents = ncomponents;
-	sbar->components = Calloc(ncomponents, sizeof(sbar_comp_t));
+	sbar->components = calloc(ncomponents, sizeof(sbar_comp_t));
+	if (sbar->components == NULL)
+		die(errno);
 	sbar->dirty = false;
-	Pthread_mutex_init(&sbar->mutex, NULL);
-	Pthread_cond_init(&sbar->dirty_cond, NULL);
+	if ((r = pthread_mutex_init(&sbar->mutex, NULL)) != 0)
+		die(r);
+	if ((r = pthread_cond_init(&sbar->dirty_cond, NULL)) != 0)
+		die(r);
 
 	/*
 	 * The signal for which each asynchronous component thread will wait
@@ -169,7 +198,8 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	 * will never be delivered to any other thread.  We set the mask here
 	 * since all threads inherit their signal mask from their creator.
 	 */
-	Sigemptyset(&sigset);
+	if (sigemptyset(&sigset) < 0)
+		die(errno);
 
 	/* Create the components */
 	for (unsigned i = 0; i < ncomponents; i++) {
@@ -177,7 +207,6 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 
 		cp->id = i;
 		cp->buf = sbar->comp_bufs + ((size_t)MAXLEN * i);
-		/* NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.strcpy) */
 		strcpy(cp->buf, no_val_str);
 		cp->update = comp_defns[i].update;
 		cp->args = comp_defns[i].args;
@@ -189,13 +218,15 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 			 * and adjust the value accordingly.
 			 */
 			cp->signum += SIGRTMIN;
-			Sigaddset(&sigset, cp->signum);
+			if (sigaddset(&sigset, cp->signum) < 0)
+				die(errno);
 		}
 
 		cp->sbar = sbar;
 	}
 
-	pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+	if ((r = pthread_sigmask(SIG_BLOCK, &sigset, NULL)) != 0)
+		die(r);
 }
 
 static void sbar_start(sbar_t *sbar)
@@ -203,92 +234,114 @@ static void sbar_start(sbar_t *sbar)
 	pthread_attr_t attr;
 	pthread_t tid;
 	sbar_comp_t *c;
+	int r;
 
-	Pthread_attr_init(&attr);
-	Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	if ((r = pthread_attr_init(&attr)) != 0)
+		die(r);
+	if ((r = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)) !=
+	    0)
+		die(r);
 
-	Pthread_create(&sbar->thread, &attr, thread_flush, sbar);
+	if ((r = pthread_create(&sbar->thread, &attr, thread_flush, sbar)) != 0)
+		die(r);
 
 	for (uint8_t i = 0; i < sbar->ncomponents; i++) {
 		c = &sbar->components[i];
 
-		Pthread_create(&tid, &attr, thread_once, c);
+		if ((r = pthread_create(&tid, &attr, thread_once, c)) != 0)
+			die(r);
 
 		if (c->interval >= 0)
-			Pthread_create(&c->thr_repeating, &attr,
-				       thread_repeating, c);
+			if ((r = pthread_create(&c->thr_repeating, &attr,
+						thread_repeating, c)) != 0)
+				die(r);
 		if (c->signum >= 0)
-			Pthread_create(&c->thr_async, &attr, thread_async, c);
+			if ((r = pthread_create(&c->thr_async, &attr,
+						thread_async, c)) != 0)
+				die(r);
 	}
+}
+
+static void usage(FILE *f)
+{
+	fputs("Usage: mtstatus [-h] [-s]\n", f);
+	fputs("  -h        Print this help message and exit\n", f);
+	fputs("  -s        Output to stdout\n", f);
 }
 
 int main(int argc, char *argv[])
 {
-	int opt;
 	char pidfile[MAXLEN];
-	FILE *fp;
 	sbar_t sbar;
-	sigset_t sigset;
-	int sig;
 
-	/* NOLINTNEXTLINE(concurrency-mt-unsafe) */
-	while ((opt = getopt(argc, argv, "s")) != -1) {
-		switch (opt) {
+	int option;
+	while ((option = getopt(argc, argv, "hs")) != -1) {
+		switch (option) {
+		case 'h':
+			usage(stdout);
+			exit(EXIT_SUCCESS);
 		case 's':
 			to_stdout = true;
 			break;
-		case '?':
-			app_error("Usage: %s [-s]", argv[0]);
-			break;
 		default:
-			app_error("Unexpected case in switch()");
+			usage(stderr);
+			exit(EXIT_FAILURE);
 		}
 	}
 
 	if (!to_stdout) {
 		/* Save the pid to a file so it’s available to shell commands */
-		Snprintf(pidfile, MAXLEN, "/tmp/%s.pid", basename(argv[0]));
-		fp = Fopen(pidfile, "w");
-		if (fprintf(fp, "%ld", (long)getpid()) < 0)
-			app_error("Unable to create PID file");
-		Fclose(fp);
+		FILE *f;
+		snprintf(pidfile, sizeof(pidfile), "/tmp/%s.pid",
+			 basename(argv[0]));
+		if ((f = fopen(pidfile, "w")) == NULL)
+			die(errno);
+		if (fprintf(f, "%ld", (long)getpid()) < 0)
+			die(errno);
+		fclose(f);
 
-		dpy = xOpenDisplay(NULL);
+		if ((dpy = XOpenDisplay(NULL)) == NULL)
+			die(errno);
 	}
 
-	/*
-	 * We want SIGINT and SIGTERM delivered only to the initial thread.  We
-         * mask them here, since the mask will be inherited by new threads, and
-         * unmask them after the threads have been created.
-	 */
-	Sigemptyset(&sigset);
-	Sigaddset(&sigset, SIGINT);
-	Sigaddset(&sigset, SIGTERM);
+	/* SIGINT and SIGTERM must be delivered only to the initial thread */
+	sigset_t sigset;
+	if (sigemptyset(&sigset) < 0)
+		die(errno);
+	if (sigaddset(&sigset, SIGINT) < 0)
+		die(errno);
+	if (sigaddset(&sigset, SIGTERM) < 0)
+		die(errno);
 	pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 
+	/* Start the status bar */
 	sbar_create(&sbar, N_COMPONENTS, component_defns);
 	sbar_start(&sbar);
 
-	Sigwait(&sigset, &sig);
+	/* Wait for SIGINT, SIGTERM */
+	int sig, r;
+	if ((r = sigwait(&sigset, &sig)) == -1)
+		die(r);
+
 	switch (sig) {
 	case SIGINT:
-		puts("SIGINT received. Terminating.\n");
+		puts("SIGINT received.\n");
 		break;
 	case SIGTERM:
-		puts("SIGTERM received. Terminating.\n");
+		puts("SIGTERM received.\n");
 		break;
 	default:
-		puts("Unexpected signal received. Terminating.\n");
+		puts("Unexpected signal received.\n");
 	}
 
 	if (!to_stdout) {
 		/* NOLINTNEXTLINE(clang-analyzer-core.NullDereference) */
-		xStoreName(dpy, DefaultRootWindow(dpy), NULL);
+		XStoreName(dpy, DefaultRootWindow(dpy), NULL);
 		XCloseDisplay(dpy);
 
 		if (remove(pidfile) < 0)
-			unix_warn("Unable to remove %s", pidfile);
+			fprintf(stderr, "Unable to remove %s", pidfile);
 	}
 
-	return EXIT_SUCCESS;
+	/* return EXIT_SUCCESS; */
 }

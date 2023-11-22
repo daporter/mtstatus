@@ -3,8 +3,7 @@
 
 #include <stdint.h>
 
-#define LEN(x)	  (sizeof(x) / sizeof((x)[0]))
-#define UNUSED(x) x##_unused __attribute__((unused))
+#define LEN(x) (sizeof(x) / sizeof((x)[0]))
 
 #define K_SI  1000
 #define K_IEC 1024

@@ -1,50 +1,54 @@
+/* Make the POSIX version of ‘strerror_r’ available */
+#define _POSIX_C_SOURCE 200112L
+
 #include "component.h"
 
-#include "errors.h"
 #include "util.h"
 
+#include <X11/Xlib.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/statvfs.h>
 #include <time.h>
 
-static bool run_cmd(char *buf, const int bufsize, const char *cmd)
+static int run_cmd(char *buf, const int bufsize, const char *cmd)
 {
 	char *p;
 	FILE *fp;
 
-	if (!(fp = popen(cmd, "r"))) { /* NOLINT(cert-env33-c)*/
-		unix_warn("popen '%s':", cmd);
-		return false;
+	if ((fp = popen(cmd, "r")) == NULL) {
+		return errno;
 	}
 
 	p = fgets(buf, bufsize - 1, fp);
 	if (pclose(fp) < 0) {
-		unix_warn("pclose '%s':", cmd);
-		return false;
+		return errno;
 	}
 	if (!p)
-		return false;
+		return errno;
 
 	if ((p = strrchr(buf, '\n')))
 		p[0] = '\0';
 
-	return true;
+	return 0;
 }
 
-void component_keyb_ind(char *buf, const int bufsize, const char *UNUSED(args),
-			const char *UNUSED(no_val_str))
+void component_keyb_ind(char *buf, const int bufsize, const char *args,
+			const char *no_val_str)
 {
+	(void)args;
+	(void)no_val_str;
 	Display *dpy;
 	XKeyboardState state;
 	bool caps_on, numlock_on;
 	char *val;
 
 	if (!(dpy = XOpenDisplay(NULL))) {
-		unix_warn("XOpenDisplay: Failed to open display");
+		fputs("XOpenDisplay: Unable to open display", stderr);
 		return;
 	}
 	XGetKeyboardControl(dpy, &state);
@@ -61,55 +65,43 @@ void component_keyb_ind(char *buf, const int bufsize, const char *UNUSED(args),
 	else
 		val = "";
 
-	Snprintf(buf, bufsize, val);
+	snprintf(buf, bufsize, "%s", val);
 }
 
-void component_notmuch(char *buf, const int bufsize, const char *UNUSED(args),
+void component_notmuch(char *buf, const int bufsize, const char *args,
 		       const char *no_val_str)
 {
-	char output[bufsize];
+	(void)args;
+	char output[bufsize], errbuf[bufsize];
 	long count;
+	int r;
 
-	Snprintf(buf, bufsize, " %s", no_val_str);
+	snprintf(buf, bufsize, " %s", no_val_str);
 
-	if (!run_cmd(output, bufsize,
-		     "notmuch count 'tag:unread NOT tag:archived'")) {
-		unix_warn("[notmuch] Failed to run notmuch command");
+	if ((r = run_cmd(output, bufsize,
+			 "notmuch count 'tag:unread NOT tag:archived'")) != 0) {
+		strerror_r(r, errbuf, sizeof(errbuf));
+		fprintf(stderr, "notmuch command failed: %s", errbuf);
 		return;
 	}
 
 	errno = 0; /* To distinguish success/failure after call */
 	count = strtol(output, NULL, 0);
 	if (errno != 0) {
-		unix_warn("[notmuch] Failed to convert command output");
+		strerror_r(errno, errbuf, sizeof(errbuf));
+		fprintf(stderr, "Unable to convert command output: %s", errbuf);
 		return;
 	}
 	if (count == 0)
-		Snprintf(buf, bufsize, " %ld", count);
+		snprintf(buf, bufsize, " %ld", count);
 	else
-		Snprintf(buf, bufsize, " %ld", count);
+		snprintf(buf, bufsize, " %ld", count);
 }
 
-void component_load_avg(char *buf, const int bufsize, const char *UNUSED(args),
-			const char *no_val_str)
-{
-	double avgs[1];
-	char output[bufsize];
-
-	Snprintf(buf, bufsize, " %s", no_val_str);
-
-	if (getloadavg(avgs, 1) < 0) {
-		unix_warn("[load_avg] Failed to obtain load average");
-		return;
-	}
-
-	Snprintf(output, LEN(output), "%.2f", avgs[0]);
-	Snprintf(buf, bufsize, " %s", output);
-}
-
-void component_mem_avail(char *buf, const int bufsize, const char *UNUSED(args),
+void component_mem_avail(char *buf, const int bufsize, const char *args,
 			 const char *no_val_str)
 {
+	(void)args;
 	const char *meminfo = "/proc/meminfo";
 	const char *target = "MemAvailable";
 	FILE *fp;
@@ -118,10 +110,10 @@ void component_mem_avail(char *buf, const int bufsize, const char *UNUSED(args),
 	int i;
 	uintmax_t val;
 
-	Snprintf(buf, bufsize, " %s", no_val_str);
+	snprintf(buf, bufsize, " %s", no_val_str);
 
 	if ((fp = fopen(meminfo, "r")) == NULL) {
-		unix_warn("[mem_avail] Unable to open %s", meminfo);
+		fprintf(stderr, "Unable to open %s", meminfo);
 		return;
 	}
 
@@ -129,45 +121,47 @@ void component_mem_avail(char *buf, const int bufsize, const char *UNUSED(args),
 		if (strstr(line, target) != NULL)
 			break;
 	if (ret == NULL) { /* EOF reached */
-		app_warn("[mem_avail] %s not found in %s", target, meminfo);
-		Fclose(fp);
+		fprintf(stderr, "%s not found in %s", target, meminfo);
+		fclose(fp);
 		return;
 	}
 
 	for (i = 0, s = line; i < 2; i++, s = NULL)
 		if ((token = strtok_r(s, " ", &saveptr)) == NULL) {
-			app_warn("[mem_avail] Unable to parse line: %s", line);
-			Fclose(fp);
+			fprintf(stderr, "Unable to parse line: %s", line);
+			fclose(fp);
 			return;
 		}
 
-	Fclose(fp);
+	fclose(fp);
 
 	if ((val = strtoumax(token, NULL, 0)) == 0 || val == INTMAX_MAX ||
 	    val == UINTMAX_MAX) {
-		app_warn("[mem_avail] Unable to convert value %s", token);
+		fprintf(stderr, "Unable to convert value %s", token);
 		return;
 	}
 
 	util_fmt_human(val_str, LEN(val_str), val * K_IEC, K_IEC);
-	Snprintf(buf, bufsize, " %s", val_str);
+	snprintf(buf, bufsize, " %s", val_str);
 }
 
 void component_disk_free(char *buf, const int bufsize, const char *path,
 			 const char *no_val_str)
 {
 	struct statvfs fs;
-	char output[bufsize];
+	char output[bufsize], errbuf[bufsize];
+	int r;
 
-	Snprintf(buf, bufsize, "󰋊 %s", no_val_str);
+	snprintf(buf, bufsize, "󰋊 %s", no_val_str);
 
-	if (statvfs(path, &fs) < 0) {
-		unix_warn("[disk_free] statvfs '%s':", path);
+	if ((r = statvfs(path, &fs)) < 0) {
+		strerror_r(r, errbuf, sizeof(errbuf));
+		fprintf(stderr, "statvfs: '%s': %s", path, errbuf);
 		return;
 	}
 
 	util_fmt_human(output, LEN(output), fs.f_frsize * fs.f_bavail, K_IEC);
-	Snprintf(buf, bufsize, "󰋊 %s", output);
+	snprintf(buf, bufsize, "󰋊 %s", output);
 }
 
 void component_datetime(char *buf, const int bufsize, const char *date_fmt,
@@ -175,19 +169,21 @@ void component_datetime(char *buf, const int bufsize, const char *date_fmt,
 {
 	time_t t;
 	struct tm now;
-	char output[bufsize];
+	char output[bufsize], errbuf[bufsize];
 
-	Snprintf(buf, bufsize, " %s", no_val_str);
+	snprintf(buf, bufsize, " %s", no_val_str);
 
 	if ((t = time(NULL)) == -1) {
-		unix_warn("[datetime] Unable to obtain the current time");
+		strerror_r(errno, errbuf, sizeof(errbuf));
+		fprintf(stderr, "time: %s", errbuf);
 		return;
 	}
 	if (localtime_r(&t, &now) == NULL) {
-		unix_warn("[datetime] Unable to determine local time");
+		strerror_r(errno, errbuf, sizeof(errbuf));
+		fprintf(stderr, "Unable to determine local time: %s", errbuf);
 		return;
 	}
 	if (strftime(output, LEN(output), date_fmt, &now) == 0)
-		unix_warn("[datetime] Unable to format time");
-	Snprintf(buf, bufsize, " %s", output);
+		fputs("Unable to format time", stderr);
+	snprintf(buf, bufsize, " %s", output);
 }

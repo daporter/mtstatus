@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include "component.h"
+#include "src/component.h"
 
 #include <time.h>
 
@@ -39,7 +39,6 @@ const sbar_comp_defn_t component_defns[] = {
 	{ component_keyb_ind,  NULL,          -1,        0 },
 	{ component_notmuch,   NULL,          -1,        1 },
 	/* network traffic */
-	{ component_load_avg,  NULL,           2,       -1 },
 	{ component_mem_avail, NULL,           2,       -1 },
 	{ component_disk_free, "/",           15,       -1 },
 	/* volume */

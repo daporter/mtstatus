@@ -2,36 +2,24 @@
 .SUFFIXES:
 
 CC	 = cc
-CPPFLAGS = -D_DEFAULT_SOURCE -MMD -MP
+CPPFLAGS =
 CFLAGS	 = -std=c17 -pthread -Og -g3 -Wall -Wextra -Wpedantic -Wshadow -Werror -fanalyzer
 LDFLAGS  =
 LDLIBS	 = -lX11
-PARALLEL = parallel-moreutils
-SRCDIR	 = src
-OBJDIR	 = build
-BINDIR	 = .
-BIN	 = $(BINDIR)/mtstatus
-SRCS	 = $(wildcard $(SRCDIR)/*.c)
-OBJS	 = $(SRCS:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 
-all: $(BIN)
+sources = src/mtstatus.c src/component.c src/util.c
+objects = $(sources:.c=.o)
 
-$(BIN): $(OBJS) | $(BINDIR)
+mtstatus: $(objects)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-$(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
-	$(CC) -c -o $@ $(CPPFLAGS) $(CFLAGS) $<
-
-$(BINDIR) $(OBJDIR):
-	mkdir -p $@
-
-format:
-	$(PARALLEL) clang-format -i -- $(wildcard $(SRCDIR)/*.[ch])
-
-check:
-	$(PARALLEL) clang-tidy --quiet -- $(wildcard $(SRCDIR)/*.[ch])
+src/mtstatus.o: src/mtstatus.c config.h src/component.h src/util.h
+src/component.o: src/component.c src/component.h src/util.h
+src/util.o: src/util.c src/util.h
 
 clean:
-	rm -r $(OBJDIR) $(BIN) core
+	rm -rf mtstatus $(objects)
 
--include $(OBJS:.o=.d)
+.SUFFIXES: .c .o
+.c.o:
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<

@@ -1,6 +1,7 @@
 #include "util.h"
 
-#include "errors.h"
+#include <stddef.h>
+#include <stdio.h>
 
 char *util_cat(char *dest, const char *end, const char *str)
 {
@@ -29,7 +30,6 @@ int util_fmt_human(char *buf, int len, uintmax_t num, int base)
 		prefixlen = LEN(prefix_iec);
 		break;
 	default:
-		app_warn("[fmt_human] Invalid base");
 		return -1;
 	}
 
@@ -37,5 +37,5 @@ int util_fmt_human(char *buf, int len, uintmax_t num, int base)
 	for (i = 0; i < prefixlen && scaled >= base; i++)
 		scaled /= base;
 
-	return Snprintf(buf, len, "%.1f %s", scaled, prefix[i]);
+	return snprintf(buf, len, "%.1f %s", scaled, prefix[i]);
 }
