@@ -20,19 +20,19 @@ int run_cmd(char *buf, const size_t bufsize, const char *cmd)
 {
 	char *p;
 	FILE *fp;
+	int r;
 
-	if ((fp = popen(cmd, "r")) == NULL) {
+	fp = popen(cmd, "r");
+	if (fp == NULL)
 		return errno;
-	}
 
 	p = fgets(buf, (int)bufsize - 1, fp);
-	if (pclose(fp) < 0) {
-		return errno;
-	}
-	if (!p)
+	r = pclose(fp);
+	if (!p || r < 0)
 		return errno;
 
-	if ((p = strrchr(buf, '\n')))
+	p = strrchr(buf, '\n');
+	if (p)
 		p[0] = '\0';
 
 	return 0;
@@ -46,13 +46,13 @@ comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args,
 	Display *dpy;
 	XKeyboardState state;
 	bool caps_on, numlock_on;
-	char *val;
+	char *val = "";
 
-	if (!(dpy = XOpenDisplay(NULL))) {
-		comp_ret_t ret = { .ok = false,
-				   .message = "Unable to open display" };
-		return ret;
-	}
+	dpy = XOpenDisplay(NULL);
+	if (!dpy)
+		return (comp_ret_t){ .ok = false,
+				     .message = "Unable to open display" };
+
 	XGetKeyboardControl(dpy, &state);
 	XCloseDisplay(dpy);
 
@@ -64,14 +64,12 @@ comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args,
 		val = "Caps";
 	else if (numlock_on)
 		val = "Num";
-	else
-		val = "";
 
 	size_t len = strlen(val);
 	assert(bufsize >= len + 1);
 	memcpy(buf, val, len + 1);
-	comp_ret_t ret = { .ok = true };
-	return ret;
+
+	return (comp_ret_t){ .ok = true };
 }
 
 comp_ret_t component_notmuch(char *buf, const size_t bufsize, const char *args,
@@ -85,8 +83,9 @@ comp_ret_t component_notmuch(char *buf, const size_t bufsize, const char *args,
 
 	snprintf(buf, bufsize, " %s", no_val_str);
 
-	if ((r = run_cmd(output, bufsize,
-			 "notmuch count 'tag:unread NOT tag:archived'")) != 0) {
+	r = run_cmd(output, bufsize,
+		    "notmuch count 'tag:unread NOT tag:archived'");
+	if (r != 0) {
 		ret.ok = false;
 		strerror_r(r, errbuf, sizeof(errbuf));
 		snprintf(ret.message, sizeof(ret.message),
@@ -180,7 +179,8 @@ comp_ret_t component_disk_free(char *buf, const size_t bufsize,
 
 	snprintf(buf, bufsize, "󰋊 %s", no_val_str);
 
-	if ((r = statvfs(path, &fs)) < 0) {
+	r = statvfs(path, &fs);
+	if (r < 0) {
 		ret.ok = false;
 		strerror_r(r, errbuf, sizeof(errbuf));
 		snprintf(ret.message, sizeof(ret.message), "statvfs: '%s': %s",
@@ -205,7 +205,8 @@ comp_ret_t component_datetime(char *buf, const size_t bufsize,
 
 	snprintf(buf, bufsize, " %s", no_val_str);
 
-	if ((t = time(NULL)) == -1) {
+	t = time(NULL);
+	if (t == -1) {
 		ret.ok = false;
 		strerror_r(errno, errbuf, sizeof(errbuf));
 		snprintf(ret.message, sizeof(ret.message), "time: %s", errbuf);
@@ -219,11 +220,8 @@ comp_ret_t component_datetime(char *buf, const size_t bufsize,
 		return ret;
 	}
 	if (strftime(output, sizeof(output), date_fmt, &now) == 0) {
-		char msg[] = "Unable to format time";
-		static_assert(sizeof(ret.message) >= sizeof(msg));
-		memcpy(ret.message, msg, sizeof(msg));
-		ret.ok = false;
-		return ret;
+		return (comp_ret_t){ .ok = false,
+				     .message = "Unable to format time" };
 	}
 	snprintf(buf, bufsize, " %s", output);
 	ret.ok = true;

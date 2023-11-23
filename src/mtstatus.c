@@ -60,13 +60,14 @@ void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 	/*
 	 * Maintain the status bar "dirty" invariant.
 	 */
-	if ((r = pthread_mutex_lock(&sbar->mutex)) != 0)
+	r = pthread_mutex_lock(&sbar->mutex);
+	if (r != 0)
 		die(r);
-	while (!sbar->dirty)
-		if ((r = pthread_cond_wait(&sbar->dirty_cond, &sbar->mutex)) !=
-		    0)
+	while (!sbar->dirty) {
+		r = pthread_cond_wait(&sbar->dirty_cond, &sbar->mutex);
+		if (r != 0)
 			die(r);
-
+	}
 	for (i = 0; (ptr < end) && (i < sbar->ncomponents - 1); i++) {
 		cbuf = sbar->components[i].buf;
 		if (strlen(cbuf) > 0) {
@@ -82,7 +83,8 @@ void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 	*ptr = '\0';
 
 	sbar->dirty = false;
-	if ((r = pthread_mutex_unlock(&sbar->mutex)) != 0)
+	r = pthread_mutex_unlock(&sbar->mutex);
+	if (r != 0)
 		die(r);
 }
 
@@ -99,15 +101,18 @@ void sbar_component_update(const sbar_comp_t *c)
 	/*
 	 * Maintain the status bar "dirty" invariant.
 	 */
-	if ((r = pthread_mutex_lock(&c->sbar->mutex)) != 0)
+	r = pthread_mutex_lock(&c->sbar->mutex);
+	if (r != 0)
 		die(r);
 	static_assert(MAXLEN >= sizeof(tmpbuf),
 		      "size of component buffer < sizeof(tmpbuf)");
 	memcpy(c->buf, tmpbuf, sizeof(tmpbuf));
 	c->sbar->dirty = true;
-	if ((r = pthread_cond_signal(&c->sbar->dirty_cond)) != 0)
+	r = pthread_cond_signal(&c->sbar->dirty_cond);
+	if (r != 0)
 		die(r);
-	if ((r = pthread_mutex_unlock(&c->sbar->mutex)) != 0)
+	r = pthread_mutex_unlock(&c->sbar->mutex);
+	if (r != 0)
 		die(r);
 }
 
@@ -156,7 +161,8 @@ void *thread_async(void *arg)
 		die(errno);
 
 	while (true) {
-		if ((r = sigwait(&sigset, &sig)) == -1)
+		r = sigwait(&sigset, &sig);
+		if (r == -1)
 			die(r);
 		assert(sig == c->signum && "unexpected signal received");
 		sbar_component_update(c);
@@ -187,9 +193,11 @@ void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	if (sbar->components == NULL)
 		die(errno);
 	sbar->dirty = false;
-	if ((r = pthread_mutex_init(&sbar->mutex, NULL)) != 0)
+	r = pthread_mutex_init(&sbar->mutex, NULL);
+	if (r != 0)
 		die(r);
-	if ((r = pthread_cond_init(&sbar->dirty_cond, NULL)) != 0)
+	r = pthread_cond_init(&sbar->dirty_cond, NULL);
+	if (r != 0)
 		die(r);
 
 	/*
@@ -227,7 +235,8 @@ void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 		cp->sbar = sbar;
 	}
 
-	if ((r = pthread_sigmask(SIG_BLOCK, &sigset, NULL)) != 0)
+	r = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+	if (r != 0)
 		die(r);
 }
 
@@ -238,29 +247,35 @@ void sbar_start(sbar_t *sbar)
 	sbar_comp_t *c;
 	int r;
 
-	if ((r = pthread_attr_init(&attr)) != 0)
+	r = pthread_attr_init(&attr);
+	if (r != 0)
 		die(r);
-	if ((r = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)) !=
-	    0)
+	r = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	if (r != 0)
 		die(r);
-
-	if ((r = pthread_create(&sbar->thread, &attr, thread_flush, sbar)) != 0)
+	r = pthread_create(&sbar->thread, &attr, thread_flush, sbar);
+	if (r != 0)
 		die(r);
 
 	for (uint8_t i = 0; i < sbar->ncomponents; i++) {
 		c = &sbar->components[i];
 
-		if ((r = pthread_create(&tid, &attr, thread_once, c)) != 0)
+		r = pthread_create(&tid, &attr, thread_once, c);
+		if (r != 0)
 			die(r);
 
-		if (c->interval >= 0 &&
-		    (r = pthread_create(&c->thr_repeating, &attr,
-					thread_repeating, c)) != 0)
-			die(r);
-		if (c->signum >= 0 &&
-		    (r = pthread_create(&c->thr_async, &attr, thread_async,
-					c)) != 0)
-			die(r);
+		if (c->interval >= 0) {
+			r = pthread_create(&c->thr_repeating, &attr,
+					   thread_repeating, c);
+			if (r != 0)
+				die(r);
+		}
+		if (c->signum >= 0) {
+			r = pthread_create(&c->thr_async, &attr, thread_async,
+					   c);
+			if (r != 0)
+				die(r);
+		}
 	}
 }
 
@@ -297,13 +312,15 @@ int main(int argc, char *argv[])
 		FILE *f;
 		snprintf(pidfile, sizeof(pidfile), "/tmp/%s.pid",
 			 basename(argv[0]));
-		if ((f = fopen(pidfile, "w")) == NULL)
+		f = fopen(pidfile, "w");
+		if (f == NULL)
 			die(errno);
 		if (fprintf(f, "%ld", (long)getpid()) < 0)
 			die(errno);
 		fclose(f);
 
-		if ((dpy = XOpenDisplay(NULL)) == NULL)
+		dpy = XOpenDisplay(NULL);
+		if (dpy == NULL)
 			die(errno);
 	}
 
@@ -323,7 +340,8 @@ int main(int argc, char *argv[])
 
 	/* Wait for SIGINT, SIGTERM */
 	int sig, r;
-	if ((r = sigwait(&sigset, &sig)) == -1)
+	r = sigwait(&sigset, &sig);
+	if (r == -1)
 		die(r);
 
 	switch (sig) {
