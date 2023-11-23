@@ -111,59 +111,69 @@ comp_ret_t component_notmuch(char *buf, const size_t bufsize, const char *args,
 	return ret;
 }
 
-comp_ret_t component_mem_avail(char *buf, const size_t bufsize,
-			       const char *args, const char *no_val_str)
+comp_ret_t component_parse_meminfo(char *out, const size_t outsize,
+				   const char *str)
 {
-	(void)args;
-	const char *meminfo = "/proc/meminfo";
-	const char *target = "MemAvailable";
-	FILE *fp;
-	char line[bufsize], val_str[bufsize];
-	char *r, *token, *s, *saveptr;
-	int i;
+	char *m, *s, *token, *saveptr;
 	uintmax_t val;
-	comp_ret_t ret;
+	int i;
 
-	snprintf(buf, bufsize, " %s", no_val_str);
+	m = strstr(str, "MemAvailable");
+	if (m == NULL)
+		return (comp_ret_t){ .ok = false,
+				     .message = "Unable to parse meminfo" };
 
-	if ((fp = fopen(meminfo, "r")) == NULL) {
-		ret.ok = false;
-		snprintf(ret.message, sizeof(ret.message), "Unable to open %s",
-			 meminfo);
-		return ret;
+	for (i = 0, s = m; i < 2; i++, s = NULL) {
+		token = strtok_r(s, " ", &saveptr);
+		if (token == NULL)
+			return (comp_ret_t){
+				.ok = false,
+				.message = "Unable to parse meminfo"
+			};
 	}
-
-	while ((r = fgets(line, (int)bufsize, fp)) != NULL)
-		if (strstr(line, target) != NULL)
-			break;
-	if (r == NULL) { /* EOF reached */
-		fclose(fp);
-		ret.ok = false;
-		snprintf(ret.message, sizeof(ret.message), "%s not found in %s",
-			 target, meminfo);
-		return ret;
-	}
-
-	for (i = 0, s = line; i < 2; i++, s = NULL)
-		if ((token = strtok_r(s, " ", &saveptr)) == NULL) {
-			fclose(fp);
-			ret.ok = false;
-			snprintf(ret.message, sizeof(ret.message),
-				 "Unable to parse line: %s", line);
-			return ret;
-		}
-
-	fclose(fp);
-
-	if ((val = strtoumax(token, NULL, 0)) == 0 || val == INTMAX_MAX ||
-	    val == UINTMAX_MAX) {
+	val = strtoumax(token, NULL, 0);
+	if (val == 0 || val == INTMAX_MAX || val == UINTMAX_MAX) {
+		comp_ret_t ret;
 		ret.ok = false;
 		snprintf(ret.message, sizeof(ret.message),
 			 "Unable to convert value %s", token);
 		return ret;
 	}
 
-	util_fmt_human(val_str, sizeof(val_str), val * K_IEC, K_IEC);
+	util_fmt_human(out, outsize, val * K_IEC, K_IEC);
+	return (comp_ret_t){ .ok = true };
+}
+
+comp_ret_t component_mem_avail(char *buf, const size_t bufsize,
+			       const char *args, const char *no_val_str)
+{
+	FILE *f;
+	char *meminfo = NULL;
+	size_t len;
+	ssize_t nread;
+	char val_str[bufsize];
+	comp_ret_t ret;
+	(void)args;
+
+	snprintf(buf, bufsize, " %s", no_val_str);
+
+	f = fopen("/proc/meminfo", "r");
+	if (f == NULL)
+		return (comp_ret_t){
+			.ok = false, .message = "Unable to read /proc/meminfo"
+		};
+	nread = getdelim(&meminfo, &len, '\0', f);
+	if (nread == -1) {
+		free(meminfo);
+		return (comp_ret_t){
+			.ok = false, .message = "Unable to read /proc/meminfo"
+		};
+	}
+	ret = component_parse_meminfo(val_str, bufsize, meminfo);
+	free(meminfo);
+	if (!ret.ok)
+		return ret;
+
 	snprintf(buf, bufsize, " %s", val_str);
 	ret.ok = true;
 	return ret;
