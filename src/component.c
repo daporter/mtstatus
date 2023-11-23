@@ -111,14 +111,16 @@ comp_ret_t component_notmuch(char *buf, const size_t bufsize, const char *args,
 	return ret;
 }
 
-comp_ret_t component_parse_meminfo(char *out, const size_t outsize,
-				   const char *str)
+comp_ret_t component_parse_meminfo(char *out, const size_t outsize, char *in,
+				   const size_t insize)
 {
 	char *m, *s, *token, *saveptr;
 	uintmax_t val;
 	int i;
 
-	m = strstr(str, "MemAvailable");
+	in[insize - 1] = '\0';
+
+	m = strstr(in, "MemAvailable");
 	if (m == NULL)
 		return (comp_ret_t){ .ok = false,
 				     .message = "Unable to parse meminfo" };
@@ -169,7 +171,7 @@ comp_ret_t component_mem_avail(char *buf, const size_t bufsize,
 			.ok = false, .message = "Unable to read /proc/meminfo"
 		};
 	}
-	ret = component_parse_meminfo(val_str, bufsize, meminfo);
+	ret = component_parse_meminfo(val_str, bufsize, meminfo, nread);
 	free(meminfo);
 	if (!ret.ok)
 		return ret;
