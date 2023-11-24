@@ -1,3 +1,6 @@
+#include "../config.h"
+#include "util.h"
+
 #include <X11/Xlib.h>
 #include <assert.h>
 #include <errno.h>

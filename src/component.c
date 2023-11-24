@@ -1,3 +1,9 @@
+#define _POSIX_C_SOURCE 200809L
+
+#include "component.h"
+
+#include "util.h"
+
 #include <X11/Xlib.h>
 #include <assert.h>
 #include <errno.h>
