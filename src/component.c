@@ -25,8 +25,7 @@ comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args,
 
 	dpy = XOpenDisplay(NULL);
 	if (!dpy)
-		return (comp_ret_t){ .ok = false,
-				     .message = "Unable to open display" };
+		return (comp_ret_t){ false, "Unable to open display" };
 
 	XGetKeyboardControl(dpy, &state);
 	XCloseDisplay(dpy);
@@ -80,16 +79,12 @@ comp_ret_t component_parse_meminfo(char *out, const size_t outsize, char *in,
 
 	m = strstr(in, "MemAvailable");
 	if (m == NULL)
-		return (comp_ret_t){ .ok = false,
-				     .message = "Unable to parse meminfo" };
+		return (comp_ret_t){ false, "Unable to parse meminfo" };
 
 	for (i = 0, s = m; i < 2; i++, s = NULL) {
 		token = strtok_r(s, " ", &saveptr);
 		if (token == NULL)
-			return (comp_ret_t){
-				.ok = false,
-				.message = "Unable to parse meminfo"
-			};
+			return (comp_ret_t){ false, "Unable to parse meminfo" };
 	}
 	val = strtoumax(token, NULL, 0);
 	if (val == 0 || val == INTMAX_MAX || val == UINTMAX_MAX) {
@@ -113,21 +108,16 @@ comp_ret_t component_mem_avail(char *buf, const size_t bufsize,
 	ssize_t nread;
 	char val_str[bufsize];
 	comp_ret_t ret;
-	(void)args;
 
 	snprintf(buf, bufsize, " %s", no_val_str);
 
 	f = fopen("/proc/meminfo", "r");
 	if (f == NULL)
-		return (comp_ret_t){
-			.ok = false, .message = "Unable to read /proc/meminfo"
-		};
+		return (comp_ret_t){ false, "Unable to read /proc/meminfo" };
 	nread = getdelim(&meminfo, &len, '\0', f);
 	if (nread == -1) {
 		free(meminfo);
-		return (comp_ret_t){
-			.ok = false, .message = "Unable to read /proc/meminfo"
-		};
+		return (comp_ret_t){ false, "Unable to read /proc/meminfo" };
 	}
 	ret = component_parse_meminfo(val_str, bufsize, meminfo, nread);
 	free(meminfo);
@@ -190,8 +180,7 @@ comp_ret_t component_datetime(char *buf, const size_t bufsize,
 		return ret;
 	}
 	if (strftime(output, sizeof(output), date_fmt, &now) == 0) {
-		return (comp_ret_t){ .ok = false,
-				     .message = "Unable to format time" };
+		return (comp_ret_t){ false, "Unable to format time" };
 	}
 	snprintf(buf, bufsize, " %s", output);
 	ret.ok = true;
