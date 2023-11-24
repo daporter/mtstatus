@@ -146,7 +146,7 @@ void *thread_repeating(void *arg)
 	const sbar_comp_t *c = (sbar_comp_t *)arg;
 
 	while (true) {
-		sleep(c->interval);
+		sleep((unsigned)c->interval);
 		sbar_component_update(c);
 	}
 	return NULL;
