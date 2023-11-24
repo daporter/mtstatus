@@ -8,47 +8,16 @@
 #include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/statvfs.h>
 #include <time.h>
-
-#define MAXLEN 128
-
-typedef struct {
-	bool ok;
-	char message[MAXLEN];
-} comp_ret_t;
-
-int run_cmd(char *buf, const size_t bufsize, const char *cmd)
-{
-	char *p;
-	FILE *fp;
-	int r;
-
-	fp = popen(cmd, "r");
-	if (fp == NULL)
-		return errno;
-
-	p = fgets(buf, (int)bufsize - 1, fp);
-	r = pclose(fp);
-	if (!p || r < 0)
-		return errno;
-
-	p = strrchr(buf, '\n');
-	if (p)
-		p[0] = '\0';
-
-	return 0;
-}
+#include <unistd.h>
 
 comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args,
 			      const char *no_val_str)
 {
-	(void)args;
-	(void)no_val_str;
 	Display *dpy;
 	XKeyboardState state;
 	bool caps_on, numlock_on;
@@ -81,40 +50,23 @@ comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args,
 comp_ret_t component_notmuch(char *buf, const size_t bufsize, const char *args,
 			     const char *no_val_str)
 {
-	(void)args;
-	char output[bufsize], errbuf[bufsize];
+	char cmdbuf[bufsize];
+	char *const argv[] = { "notmuch", "count",
+			       "tag:unread NOT tag:archived", NULL };
 	long count;
-	int r;
-	comp_ret_t ret;
 
 	snprintf(buf, bufsize, " %s", no_val_str);
 
-	r = run_cmd(output, bufsize,
-		    "notmuch count 'tag:unread NOT tag:archived'");
-	if (r != 0) {
-		ret.ok = false;
-		strerror_r(r, errbuf, sizeof(errbuf));
-		snprintf(ret.message, sizeof(ret.message),
-			 "notmuch command failed: %s", errbuf);
-		return ret;
-	}
+	if (util_run_cmd(cmdbuf, sizeof(cmdbuf), argv) != 0)
+		return (comp_ret_t){ false, "Error running notmuch" };
 
 	errno = 0; /* To distinguish success/failure after call */
-	count = strtol(output, NULL, 0);
-	if (errno != 0) {
-		ret.ok = false;
-		strerror_r(errno, errbuf, sizeof(errbuf));
-		snprintf(ret.message, sizeof(ret.message),
-			 "Unable to convert command output: %s", errbuf);
-		return ret;
-	}
-	if (count == 0)
-		snprintf(buf, bufsize, " %ld", count);
-	else
-		snprintf(buf, bufsize, " %ld", count);
+	count = strtol(cmdbuf, NULL, 0);
+	assert(!errno);
 
-	ret.ok = true;
-	return ret;
+	snprintf(buf, bufsize, "%s %ld", (count ? "" : ""), count);
+
+	return (comp_ret_t){ .ok = true };
 }
 
 comp_ret_t component_parse_meminfo(char *out, const size_t outsize, char *in,
