@@ -40,9 +40,6 @@ typedef struct sbar {
 	pthread_t thread;
 } sbar_t;
 
-const char divider[] = "  ";
-const char no_val_str[] = "n/a";
-
 bool to_stdout = false;
 Display *dpy = NULL;
 
@@ -75,7 +72,7 @@ void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 		cbuf = sbar->components[i].buf;
 		if (strlen(cbuf) > 0) {
 			ptr = util_cat(ptr, end, cbuf);
-			ptr = util_cat(ptr, end, divider);
+			ptr = util_cat(ptr, end, DIVIDER);
 		}
 	}
 	if (ptr < end) {
@@ -97,7 +94,7 @@ void sbar_component_update(const sbar_comp_t *c)
 	int r;
 	comp_ret_t ret;
 
-	ret = c->update(tmpbuf, sizeof(tmpbuf), c->args, no_val_str);
+	ret = c->update(tmpbuf, sizeof(tmpbuf), c->args);
 	if (!ret.ok)
 		fprintf(stderr, "Error updating component: %s\n", ret.message);
 
@@ -218,9 +215,9 @@ void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 
 		cp->id = i;
 		cp->buf = sbar->comp_bufs + ((size_t)MAXLEN * i);
-		static_assert(sizeof(no_val_str) <= MAXLEN,
-			      "no_val_str too large");
-		memcpy(cp->buf, no_val_str, sizeof(no_val_str));
+		static_assert(sizeof(NO_VAL_STR) <= MAXLEN,
+			      "NO_VAL_STR too large");
+		memcpy(cp->buf, NO_VAL_STR, sizeof(NO_VAL_STR));
 		cp->update = comp_defns[i].update;
 		cp->args = comp_defns[i].args;
 		cp->interval = comp_defns[i].interval;

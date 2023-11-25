@@ -15,8 +15,7 @@
 #include <time.h>
 #include <unistd.h>
 
-comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args,
-			      const char *no_val_str)
+comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args)
 {
 	Display *dpy;
 	XKeyboardState state;
@@ -46,15 +45,14 @@ comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args,
 	return (comp_ret_t){ .ok = true };
 }
 
-comp_ret_t component_notmuch(char *buf, const size_t bufsize, const char *args,
-			     const char *no_val_str)
+comp_ret_t component_notmuch(char *buf, const size_t bufsize, const char *args)
 {
 	char cmdbuf[MAXLEN] = { 0 };
 	char *const argv[] = { "notmuch", "count",
 			       "tag:unread NOT tag:archived", NULL };
 	long count;
 
-	snprintf(buf, bufsize, " %s", no_val_str);
+	snprintf(buf, bufsize, " %s", NO_VAL_STR);
 
 	if (util_run_cmd(cmdbuf, sizeof(cmdbuf), argv) != 0)
 		return (comp_ret_t){ false, "Error running notmuch" };
@@ -100,7 +98,7 @@ comp_ret_t component_parse_meminfo(char *out, const size_t outsize, char *in,
 }
 
 comp_ret_t component_mem_avail(char *buf, const size_t bufsize,
-			       const char *args, const char *no_val_str)
+			       const char *args)
 {
 	FILE *f;
 	char *meminfo = NULL;
@@ -109,7 +107,7 @@ comp_ret_t component_mem_avail(char *buf, const size_t bufsize,
 	char val_str[bufsize];
 	comp_ret_t ret;
 
-	snprintf(buf, bufsize, " %s", no_val_str);
+	snprintf(buf, bufsize, " %s", NO_VAL_STR);
 
 	f = fopen("/proc/meminfo", "r");
 	if (f == NULL)
@@ -132,14 +130,14 @@ comp_ret_t component_mem_avail(char *buf, const size_t bufsize,
 }
 
 comp_ret_t component_disk_free(char *buf, const size_t bufsize,
-			       const char *path, const char *no_val_str)
+			       const char *path)
 {
 	struct statvfs fs;
 	char output[bufsize], errbuf[bufsize];
 	int r;
 	comp_ret_t ret;
 
-	snprintf(buf, bufsize, "󰋊 %s", no_val_str);
+	snprintf(buf, bufsize, "󰋊 %s", NO_VAL_STR);
 
 	r = statvfs(path, &fs);
 	if (r < 0) {
@@ -158,14 +156,14 @@ comp_ret_t component_disk_free(char *buf, const size_t bufsize,
 }
 
 comp_ret_t component_datetime(char *buf, const size_t bufsize,
-			      const char *date_fmt, const char *no_val_str)
+			      const char *date_fmt)
 {
 	time_t t;
 	struct tm now;
 	char output[bufsize], errbuf[bufsize];
 	comp_ret_t ret;
 
-	snprintf(buf, bufsize, " %s", no_val_str);
+	snprintf(buf, bufsize, " %s", NO_VAL_STR);
 
 	t = time(NULL);
 	if (t == -1) {
