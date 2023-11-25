@@ -113,14 +113,16 @@ comp_ret_t component_mem_avail(char *buf, const size_t bufsize,
 
 	f = fopen("/proc/meminfo", "r");
 	if (f == NULL)
-		return (comp_ret_t){ false, "Unable to read /proc/meminfo" };
+		return (comp_ret_t){ false, "Error opening /proc/meminfo" };
 	nread = getdelim(&meminfo, &len, '\0', f);
 	if (nread == -1) {
 		free(meminfo);
-		return (comp_ret_t){ false, "Unable to read /proc/meminfo" };
+		fclose(f);
+		return (comp_ret_t){ false, "Error reading /proc/meminfo" };
 	}
 	ret = component_parse_meminfo(val_str, bufsize, meminfo, nread);
 	free(meminfo);
+	fclose(f);
 	if (!ret.ok)
 		return ret;
 
