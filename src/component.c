@@ -49,7 +49,7 @@ comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args,
 comp_ret_t component_notmuch(char *buf, const size_t bufsize, const char *args,
 			     const char *no_val_str)
 {
-	char cmdbuf[bufsize];
+	char cmdbuf[MAXLEN] = { 0 };
 	char *const argv[] = { "notmuch", "count",
 			       "tag:unread NOT tag:archived", NULL };
 	long count;
