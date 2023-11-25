@@ -71,12 +71,12 @@ int util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 	default:
 		nread = read(pipefd[0], buf, bufsize);
 		assert(nread != -1 && "read used incorrectly");
-		buf[nread - 1] = '\0';
-		close(pipefd[0]);
-		close(pipefd[1]);
+		buf[nread - 1] = '\0'; /* Remove trailing newline */
 		if (waitpid(pid, &status, 0) == -1)
 			/* TODO: return a more informative value? */
 			return EXIT_FAILURE;
+		close(pipefd[0]);
+		close(pipefd[1]);
 	}
 	return EXIT_SUCCESS;
 }
