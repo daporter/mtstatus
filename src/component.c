@@ -23,20 +23,22 @@ comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args)
 	char *val = "";
 
 	dpy = XOpenDisplay(NULL);
-	if (!dpy)
+	if (!dpy) {
 		return (comp_ret_t){ false, "Unable to open display" };
+	}
 
 	XGetKeyboardControl(dpy, &state);
 	XCloseDisplay(dpy);
 
 	caps_on = state.led_mask & (1 << 0);
 	numlock_on = state.led_mask & (1 << 1);
-	if (caps_on && numlock_on)
+	if (caps_on && numlock_on) {
 		val = "Caps Num";
-	else if (caps_on)
+	} else if (caps_on) {
 		val = "Caps";
-	else if (numlock_on)
+	} else if (numlock_on) {
 		val = "Num";
+	}
 
 	size_t len = strlen(val);
 	assert(bufsize >= len + 1);
@@ -54,9 +56,9 @@ comp_ret_t component_notmuch(char *buf, const size_t bufsize, const char *args)
 
 	snprintf(buf, bufsize, " %s", NO_VAL_STR);
 
-	if (util_run_cmd(cmdbuf, sizeof(cmdbuf), argv) != 0)
+	if (util_run_cmd(cmdbuf, sizeof(cmdbuf), argv) != 0) {
 		return (comp_ret_t){ false, "Error running notmuch" };
-
+	}
 	errno = 0; /* To distinguish success/failure after call */
 	count = strtol(cmdbuf, NULL, 0);
 	assert(!errno);
@@ -76,13 +78,14 @@ comp_ret_t component_parse_meminfo(char *out, const size_t outsize, char *in,
 	in[insize - 1] = '\0';
 
 	m = strstr(in, "MemAvailable");
-	if (m == NULL)
+	if (m == NULL) {
 		return (comp_ret_t){ false, "Unable to parse meminfo" };
-
+	}
 	for (i = 0, s = m; i < 2; i++, s = NULL) {
 		token = strtok_r(s, " ", &saveptr);
-		if (token == NULL)
+		if (token == NULL) {
 			return (comp_ret_t){ false, "Unable to parse meminfo" };
+		}
 	}
 	val = strtoumax(token, NULL, 0);
 	if (val == 0 || val == INTMAX_MAX || val == UINTMAX_MAX) {
@@ -121,8 +124,9 @@ comp_ret_t component_mem_avail(char *buf, const size_t bufsize,
 	ret = component_parse_meminfo(val_str, bufsize, meminfo, nread);
 	free(meminfo);
 	fclose(f);
-	if (!ret.ok)
+	if (!ret.ok) {
 		return ret;
+	}
 
 	snprintf(buf, bufsize, " %s", val_str);
 	ret.ok = true;
