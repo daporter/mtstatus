@@ -13,6 +13,7 @@ Checks: >-
   llvm-*,
   -llvm-header-guard,
   misc-*,
+  -misc-unused-parameters,
   modernize-*,
   -modernize-macro-to-enum,
   performance-*,
