@@ -1,9 +1,9 @@
-#include "../config.h"
-#include "util.h"
+#define _POSIX_C_SOURCE 200809L
 
 #include <X11/Xlib.h>
 #include <assert.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <libgen.h>
 #include <pthread.h>
 #include <signal.h>
@@ -12,13 +12,47 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/statvfs.h>
+#include <sys/wait.h>
 #include <unistd.h>
+
+#define DIVIDER	   "  "
+#define NO_VAL_STR "n/a"
+
+#define K_SI  1000
+#define K_IEC 1024
+
+#define LEN(x) (sizeof(x) / sizeof((x)[0]))
 
 #define N_COMPONENTS ((sizeof component_defns) / (sizeof(sbar_comp_defn_t)))
 
 #define MAXLEN 128
 
-typedef struct {
+typedef struct comp_ret comp_ret_t;
+
+struct comp_ret {
+	bool ok;
+	char message[MAXLEN];
+};
+
+/*
+ * Function that returns an updated value for a status bar component.
+ */
+typedef comp_ret_t (*sbar_updater_t)(char *buf, const size_t bufsize,
+				     const char *args);
+
+typedef struct sbar_comp_defn sbar_comp_defn_t;
+
+struct sbar_comp_defn {
+	const sbar_updater_t update;
+	const char *args;
+	const time_t interval;
+	const int signum;
+};
+
+typedef struct sbar_comp sbar_comp_t;
+
+struct sbar_comp {
 	unsigned id;
 	char *buf;
 	sbar_updater_t update;
@@ -28,9 +62,11 @@ typedef struct {
 	pthread_t thr_repeating;
 	pthread_t thr_async;
 	struct sbar *sbar;
-} sbar_comp_t;
+};
 
-typedef struct sbar {
+typedef struct sbar sbar_t;
+
+struct sbar {
 	char *comp_bufs;
 	uint8_t ncomponents;
 	sbar_comp_t *components;
@@ -38,10 +74,282 @@ typedef struct sbar {
 	pthread_mutex_t mutex;
 	pthread_cond_t dirty_cond;
 	pthread_t thread;
-} sbar_t;
+};
+
+comp_ret_t component_keyb_ind(char *buf, size_t bufsize, const char *args);
+comp_ret_t component_notmuch(char *buf, size_t bufsize, const char *args);
+comp_ret_t component_parse_meminfo(char *out, size_t outsize, char *in,
+				   size_t insize);
+comp_ret_t component_mem_avail(char *buf, size_t bufsize, const char *args);
+comp_ret_t component_disk_free(char *buf, size_t bufsize, const char *path);
+comp_ret_t component_datetime(char *buf, size_t bufsize, const char *date_fmt);
+
+/* clang-format off */
+const sbar_comp_defn_t component_defns[] = {
+	/* function,           arguments,      interval, signal (SIGRTMIN+n) */
+	{ component_keyb_ind,              0,  -1,        0 },
+	{ component_notmuch,               0,  -1,        1 },
+	/* network traffic */
+	{ component_mem_avail,             0,   2,       -1 },
+	{ component_disk_free,           "/",  15,       -1 },
+	/* volume */
+	/* wifi */
+	{ component_datetime,  "%a %d %b %R",  30,       -1 },
+};
+/* clang-format on */
 
 bool to_stdout = false;
 Display *dpy = NULL;
+
+char *util_cat(char *dest, const char *end, const char *str)
+{
+	while (dest < end && *str)
+		*dest++ = *str++;
+	return dest;
+}
+
+int util_fmt_human(char *buf, size_t len, uintmax_t num, int base)
+{
+	double scaled;
+	size_t prefixlen;
+	uint8_t i;
+	const char **prefix;
+	const char *prefix_si[] = { "", "k", "M", "G", "T", "P", "E", "Z", "Y" };
+	const char *prefix_iec[] = { "",   "Ki", "Mi", "Gi", "Ti",
+				     "Pi", "Ei", "Zi", "Yi" };
+
+	switch (base) {
+	case K_SI:
+		prefix = prefix_si;
+		prefixlen = LEN(prefix_si);
+		break;
+	case K_IEC:
+		prefix = prefix_iec;
+		prefixlen = LEN(prefix_iec);
+		break;
+	default:
+		return -1;
+	}
+
+	scaled = (double)num;
+	for (i = 0; i < prefixlen && scaled >= base; i++)
+		scaled /= base;
+
+	return snprintf(buf, len, "%.1f %s", scaled, prefix[i]);
+}
+
+int util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
+{
+	int pipefd[2];
+	pid_t pid;
+	int status;
+	ssize_t nread;
+
+	assert(argv[0] && "argv[0] must not be NULL");
+
+	if (pipe(pipefd) == -1) {
+		/* TODO: return a more informative value? */
+		return EXIT_FAILURE;
+	}
+
+	pid = fork();
+	switch (pid) {
+	case -1:
+		/* TODO: return a more informative value? */
+		return EXIT_FAILURE;
+	case 0:
+		status = dup2(pipefd[1], 1);
+		assert(status != -1 && "dup2 used incorrectly");
+		execvp(argv[0], argv);
+		_exit(EXIT_FAILURE); /* Failed exec */
+	default:
+		nread = read(pipefd[0], buf, bufsize);
+		assert(nread != -1 && "read used incorrectly");
+		buf[nread - 1] = '\0'; /* Remove trailing newline */
+		if (waitpid(pid, &status, 0) == -1) {
+			/* TODO: return a more informative value? */
+			return EXIT_FAILURE;
+		}
+		close(pipefd[0]);
+		close(pipefd[1]);
+	}
+	return EXIT_SUCCESS;
+}
+
+comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args)
+{
+	XKeyboardState state;
+	bool caps_on, numlock_on;
+	char *val = "";
+
+	dpy = XOpenDisplay(NULL);
+	if (!dpy) {
+		return (comp_ret_t){ false, "Unable to open display" };
+	}
+
+	XGetKeyboardControl(dpy, &state);
+	XCloseDisplay(dpy);
+
+	caps_on = state.led_mask & (1 << 0);
+	numlock_on = state.led_mask & (1 << 1);
+	if (caps_on && numlock_on) {
+		val = "Caps Num";
+	} else if (caps_on) {
+		val = "Caps";
+	} else if (numlock_on) {
+		val = "Num";
+	}
+
+	size_t len = strlen(val);
+	assert(bufsize >= len + 1);
+	memcpy(buf, val, len + 1);
+
+	return (comp_ret_t){ .ok = true };
+}
+
+comp_ret_t component_notmuch(char *buf, const size_t bufsize, const char *args)
+{
+	char cmdbuf[MAXLEN] = { 0 };
+	char *const argv[] = { "notmuch", "count",
+			       "tag:unread NOT tag:archived", NULL };
+	long count;
+
+	snprintf(buf, bufsize, " %s", NO_VAL_STR);
+
+	if (util_run_cmd(cmdbuf, sizeof(cmdbuf), argv) != 0) {
+		return (comp_ret_t){ false, "Error running notmuch" };
+	}
+	errno = 0; /* To distinguish success/failure after call */
+	count = strtol(cmdbuf, NULL, 0);
+	assert(!errno);
+
+	snprintf(buf, bufsize, "%s %ld", (count ? "" : ""), count);
+
+	return (comp_ret_t){ .ok = true };
+}
+
+comp_ret_t component_parse_meminfo(char *out, const size_t outsize, char *in,
+				   const size_t insize)
+{
+	char *m, *s, *token, *saveptr;
+	uintmax_t val;
+	int i;
+
+	in[insize - 1] = '\0';
+
+	m = strstr(in, "MemAvailable");
+	if (m == NULL) {
+		return (comp_ret_t){ false, "Unable to parse meminfo" };
+	}
+	for (i = 0, s = m; i < 2; i++, s = NULL) {
+		token = strtok_r(s, " ", &saveptr);
+		if (token == NULL) {
+			return (comp_ret_t){ false, "Unable to parse meminfo" };
+		}
+	}
+	val = strtoumax(token, NULL, 0);
+	if (val == 0 || val == INTMAX_MAX || val == UINTMAX_MAX) {
+		comp_ret_t ret;
+		ret.ok = false;
+		snprintf(ret.message, sizeof(ret.message),
+			 "Unable to convert value %s", token);
+		return ret;
+	}
+
+	util_fmt_human(out, outsize, val * K_IEC, K_IEC);
+	return (comp_ret_t){ .ok = true };
+}
+
+comp_ret_t component_mem_avail(char *buf, const size_t bufsize,
+			       const char *args)
+{
+	FILE *f;
+	char *meminfo = NULL;
+	size_t len;
+	ssize_t nread;
+	char val_str[bufsize];
+	comp_ret_t ret;
+
+	snprintf(buf, bufsize, " %s", NO_VAL_STR);
+
+	f = fopen("/proc/meminfo", "r");
+	if (f == NULL)
+		return (comp_ret_t){ false, "Error opening /proc/meminfo" };
+	nread = getdelim(&meminfo, &len, '\0', f);
+	if (nread == -1) {
+		free(meminfo);
+		fclose(f);
+		return (comp_ret_t){ false, "Error reading /proc/meminfo" };
+	}
+	ret = component_parse_meminfo(val_str, bufsize, meminfo, nread);
+	free(meminfo);
+	fclose(f);
+	if (!ret.ok) {
+		return ret;
+	}
+
+	snprintf(buf, bufsize, " %s", val_str);
+	ret.ok = true;
+	return ret;
+}
+
+comp_ret_t component_disk_free(char *buf, const size_t bufsize,
+			       const char *path)
+{
+	struct statvfs fs;
+	char output[bufsize], errbuf[bufsize];
+	int r;
+	comp_ret_t ret;
+
+	snprintf(buf, bufsize, "󰋊 %s", NO_VAL_STR);
+
+	r = statvfs(path, &fs);
+	if (r < 0) {
+		ret.ok = false;
+		strerror_r(r, errbuf, sizeof(errbuf));
+		snprintf(ret.message, sizeof(ret.message), "statvfs: '%s': %s",
+			 path, errbuf);
+		return ret;
+	}
+
+	util_fmt_human(output, sizeof(output), fs.f_frsize * fs.f_bavail,
+		       K_IEC);
+	snprintf(buf, bufsize, "󰋊 %s", output);
+	ret.ok = true;
+	return ret;
+}
+
+comp_ret_t component_datetime(char *buf, const size_t bufsize,
+			      const char *date_fmt)
+{
+	time_t t;
+	struct tm now;
+	char output[bufsize], errbuf[bufsize];
+	comp_ret_t ret;
+
+	snprintf(buf, bufsize, " %s", NO_VAL_STR);
+
+	t = time(NULL);
+	if (t == -1) {
+		ret.ok = false;
+		strerror_r(errno, errbuf, sizeof(errbuf));
+		snprintf(ret.message, sizeof(ret.message), "time: %s", errbuf);
+		return ret;
+	}
+	if (localtime_r(&t, &now) == NULL) {
+		ret.ok = false;
+		strerror_r(errno, errbuf, sizeof(errbuf));
+		snprintf(ret.message, sizeof(ret.message),
+			 "Unable to determine local time: %s", errbuf);
+		return ret;
+	}
+	if (strftime(output, sizeof(output), date_fmt, &now) == 0) {
+		return (comp_ret_t){ false, "Unable to format time" };
+	}
+	snprintf(buf, bufsize, " %s", output);
+	ret.ok = true;
+	return ret;
+}
 
 void die(int code)
 {
