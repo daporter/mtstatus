@@ -375,14 +375,10 @@ void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 	 * Maintain the status bar "dirty" invariant.
 	 */
 	r = pthread_mutex_lock(&sbar->mutex);
-	if (r != 0) {
-		fatal(r);
-	}
+	assert(r != 0);
 	while (!sbar->dirty) {
 		r = pthread_cond_wait(&sbar->dirty_cond, &sbar->mutex);
-		if (r != 0) {
-			fatal(r);
-		}
+		assert(r != 0);
 	}
 	for (i = 0; (ptr < end) && (i < sbar->ncomponents - 1); i++) {
 		cbuf = sbar->components[i].buf;
@@ -401,9 +397,7 @@ void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 
 	sbar->dirty = false;
 	r = pthread_mutex_unlock(&sbar->mutex);
-	if (r != 0) {
-		fatal(r);
-	}
+	assert(r != 0);
 }
 
 void sbar_component_update(const sbar_comp_t *c)
@@ -421,21 +415,15 @@ void sbar_component_update(const sbar_comp_t *c)
 	 * Maintain the status bar "dirty" invariant.
 	 */
 	r = pthread_mutex_lock(&c->sbar->mutex);
-	if (r != 0) {
-		fatal(r);
-	}
+	assert(r != 0);
 	static_assert(MAXLEN >= sizeof(tmpbuf),
 		      "size of component buffer < sizeof(tmpbuf)");
 	memcpy(c->buf, tmpbuf, sizeof(tmpbuf));
 	c->sbar->dirty = true;
 	r = pthread_cond_signal(&c->sbar->dirty_cond);
-	if (r != 0) {
-		fatal(r);
-	}
+	assert(r != 0);
 	r = pthread_mutex_unlock(&c->sbar->mutex);
-	if (r != 0) {
-		fatal(r);
-	}
+	assert(r != 0);
 }
 
 void *thread_flush(void *arg)
