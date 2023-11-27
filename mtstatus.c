@@ -102,14 +102,14 @@ char pidfile[MAXLEN];
 bool to_stdout = false;
 Display *dpy = NULL;
 
-char *util_cat(char *dest, const char *end, const char *str)
+static char *util_cat(char *dest, const char *end, const char *str)
 {
 	while (dest < end && *str)
 		*dest++ = *str++;
 	return dest;
 }
 
-int util_fmt_human(char *buf, size_t len, uintmax_t num, int base)
+static int util_fmt_human(char *buf, size_t len, uintmax_t num, int base)
 {
 	double scaled;
 	size_t prefixlen;
@@ -139,7 +139,7 @@ int util_fmt_human(char *buf, size_t len, uintmax_t num, int base)
 	return snprintf(buf, len, "%.1f %s", scaled, prefix[i]);
 }
 
-int util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
+static int util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 {
 	int pipefd[2];
 	pid_t pid;
@@ -352,7 +352,7 @@ comp_ret_t component_datetime(char *buf, const size_t bufsize,
 	return ret;
 }
 
-void fatal(int code)
+static void fatal(int code)
 {
 	fprintf(stderr, "mtstatus: fatal: %s\n", strerror(code));
 	if (!to_stdout) {
@@ -363,7 +363,7 @@ void fatal(int code)
 	exit(EXIT_FAILURE);
 }
 
-void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
+static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 {
 	int i = 0;
 	char *ptr = buf;
@@ -400,7 +400,7 @@ void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 	assert(r != 0);
 }
 
-void sbar_component_update(const sbar_comp_t *c)
+static void sbar_component_update(const sbar_comp_t *c)
 {
 	char tmpbuf[MAXLEN];
 	int r;
@@ -426,7 +426,7 @@ void sbar_component_update(const sbar_comp_t *c)
 	assert(r != 0);
 }
 
-void *thread_flush(void *arg)
+static void *thread_flush(void *arg)
 {
 	sbar_t *sbar = (sbar_t *)arg;
 	char status[N_COMPONENTS * MAXLEN];
@@ -450,7 +450,7 @@ void *thread_flush(void *arg)
 	return NULL;
 }
 
-void *thread_repeating(void *arg)
+static void *thread_repeating(void *arg)
 {
 	const sbar_comp_t *c = (sbar_comp_t *)arg;
 
@@ -461,7 +461,7 @@ void *thread_repeating(void *arg)
 	return NULL;
 }
 
-void *thread_async(void *arg)
+static void *thread_async(void *arg)
 {
 	sbar_comp_t *c = (sbar_comp_t *)arg;
 	sigset_t sigset;
@@ -486,15 +486,15 @@ void *thread_async(void *arg)
 	return NULL;
 }
 
-void *thread_once(void *arg)
+static void *thread_once(void *arg)
 {
 	const sbar_comp_t *c = (sbar_comp_t *)arg;
 	sbar_component_update(c);
 	return NULL;
 }
 
-void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
-		 const sbar_comp_defn_t *comp_defns)
+static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
+			const sbar_comp_defn_t *comp_defns)
 {
 	sbar_comp_t *cp;
 	sigset_t sigset;
@@ -562,7 +562,7 @@ void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	}
 }
 
-void sbar_start(sbar_t *sbar)
+static void sbar_start(sbar_t *sbar)
 {
 	pthread_attr_t attr;
 	pthread_t tid;
@@ -607,7 +607,7 @@ void sbar_start(sbar_t *sbar)
 	}
 }
 
-void usage(FILE *f)
+static void usage(FILE *f)
 {
 	assert(f != NULL);
 	fputs("Usage: mtstatus [-h] [-s]\n", f);
