@@ -76,25 +76,25 @@ struct sbar {
 	pthread_t thread;
 };
 
-comp_ret_t component_keyb_ind(char *buf, size_t bufsize, const char *args);
-comp_ret_t component_notmuch(char *buf, size_t bufsize, const char *args);
-comp_ret_t component_mem_avail(char *buf, size_t bufsize, const char *args);
-comp_ret_t component_disk_free(char *buf, size_t bufsize, const char *path);
-comp_ret_t component_volume(char *buf, size_t bufsize, const char *path);
-comp_ret_t component_datetime(char *buf, size_t bufsize, const char *date_fmt);
+comp_ret_t comp_keyb_ind(char *buf, size_t bufsize, const char *args);
+comp_ret_t comp_notmuch(char *buf, size_t bufsize, const char *args);
+comp_ret_t comp_mem_avail(char *buf, size_t bufsize, const char *args);
+comp_ret_t comp_disk_free(char *buf, size_t bufsize, const char *path);
+comp_ret_t comp_volume(char *buf, size_t bufsize, const char *path);
+comp_ret_t comp_datetime(char *buf, size_t bufsize, const char *date_fmt);
 
 /* clang-format off */
 const sbar_comp_defn_t component_defns[] = {
 	/* /\* function,        arguments,     interval, signal (SIGRTMIN+n) *\/ */
-	{ component_keyb_ind,              0,  -1,        0 },
-	{ component_notmuch,               0,  -1,        1 },
+	{ comp_keyb_ind,              0,  -1,        0 },
+	{ comp_notmuch,               0,  -1,        1 },
 	/* network traffic */
 	/* cpu */
-	{ component_mem_avail,             0,   2,       -1 },
-	{ component_disk_free,           "/",  15,       -1 },
-	{ component_volume,                0,  -1,        2 },
+	{ comp_mem_avail,             0,   2,       -1 },
+	{ comp_disk_free,           "/",  15,       -1 },
+	{ comp_volume,                0,  -1,        2 },
 	/* wifi network */
-	{ component_datetime,  "%a %d %b %R",  30,       -1 },
+	{ comp_datetime,  "%a %d %b %R",  30,       -1 },
 };
 /* clang-format on */
 
@@ -177,7 +177,7 @@ static int util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 	return EXIT_SUCCESS;
 }
 
-comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args)
+comp_ret_t comp_keyb_ind(char *buf, const size_t bufsize, const char *args)
 {
 	XKeyboardState state;
 	bool caps_on, numlock_on;
@@ -207,7 +207,7 @@ comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args)
 	return (comp_ret_t){ .ok = true };
 }
 
-comp_ret_t component_notmuch(char *buf, const size_t bufsize, const char *args)
+comp_ret_t comp_notmuch(char *buf, const size_t bufsize, const char *args)
 {
 	char cmdbuf[MAXLEN] = { 0 };
 	char *const argv[] = { "notmuch", "count",
@@ -228,8 +228,8 @@ comp_ret_t component_notmuch(char *buf, const size_t bufsize, const char *args)
 	return (comp_ret_t){ .ok = true };
 }
 
-static comp_ret_t component_parse_meminfo(char *out, const size_t outsize,
-					  char *in, const size_t insize)
+static comp_ret_t comp_parse_meminfo(char *out, const size_t outsize, char *in,
+				     const size_t insize)
 {
 	char *m, *s, *token, *saveptr;
 	uintmax_t val;
@@ -260,8 +260,7 @@ static comp_ret_t component_parse_meminfo(char *out, const size_t outsize,
 	return (comp_ret_t){ .ok = true };
 }
 
-comp_ret_t component_mem_avail(char *buf, const size_t bufsize,
-			       const char *args)
+comp_ret_t comp_mem_avail(char *buf, const size_t bufsize, const char *args)
 {
 	FILE *f;
 	char *meminfo = NULL;
@@ -281,7 +280,7 @@ comp_ret_t component_mem_avail(char *buf, const size_t bufsize,
 		fclose(f);
 		return (comp_ret_t){ false, "Error reading /proc/meminfo" };
 	}
-	ret = component_parse_meminfo(val_str, bufsize, meminfo, nread);
+	ret = comp_parse_meminfo(val_str, bufsize, meminfo, nread);
 	free(meminfo);
 	fclose(f);
 	if (!ret.ok) {
@@ -293,8 +292,7 @@ comp_ret_t component_mem_avail(char *buf, const size_t bufsize,
 	return ret;
 }
 
-comp_ret_t component_disk_free(char *buf, const size_t bufsize,
-			       const char *path)
+comp_ret_t comp_disk_free(char *buf, const size_t bufsize, const char *path)
 {
 	struct statvfs fs;
 	char output[bufsize], errbuf[bufsize];
@@ -319,7 +317,7 @@ comp_ret_t component_disk_free(char *buf, const size_t bufsize,
 	return ret;
 }
 
-comp_ret_t component_volume(char *buf, const size_t bufsize, const char *path)
+comp_ret_t comp_volume(char *buf, const size_t bufsize, const char *path)
 {
 	char cmdbuf[MAXLEN] = { 0 };
 	char *const argv[] = { "pamixer", "--get-volume-human", NULL };
@@ -334,8 +332,7 @@ comp_ret_t component_volume(char *buf, const size_t bufsize, const char *path)
 	return (comp_ret_t){ .ok = true };
 }
 
-comp_ret_t component_datetime(char *buf, const size_t bufsize,
-			      const char *date_fmt)
+comp_ret_t comp_datetime(char *buf, const size_t bufsize, const char *date_fmt)
 {
 	time_t t;
 	struct tm now;
@@ -414,7 +411,7 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 	assert(r == 0);
 }
 
-static void sbar_component_update(const sbar_comp_t *c)
+static void sbar_comp_update(const sbar_comp_t *c)
 {
 	char tmpbuf[MAXLEN];
 	int r;
@@ -470,7 +467,7 @@ static void *thread_repeating(void *arg)
 
 	while (true) {
 		sleep((unsigned)c->interval);
-		sbar_component_update(c);
+		sbar_comp_update(c);
 	}
 	return NULL;
 }
@@ -494,7 +491,7 @@ static void *thread_async(void *arg)
 			fatal(r);
 		}
 		assert(sig == c->signum && "unexpected signal received");
-		sbar_component_update(c);
+		sbar_comp_update(c);
 	}
 
 	return NULL;
@@ -503,7 +500,7 @@ static void *thread_async(void *arg)
 static void *thread_once(void *arg)
 {
 	const sbar_comp_t *c = (sbar_comp_t *)arg;
-	sbar_component_update(c);
+	sbar_comp_update(c);
 	return NULL;
 }
 
