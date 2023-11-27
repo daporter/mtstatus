@@ -98,6 +98,7 @@ const sbar_comp_defn_t component_defns[] = {
 };
 /* clang-format on */
 
+char pidfile[MAXLEN];
 bool to_stdout = false;
 Display *dpy = NULL;
 
@@ -351,9 +352,14 @@ comp_ret_t component_datetime(char *buf, const size_t bufsize,
 	return ret;
 }
 
-void die(int code)
+void fatal(int code)
 {
 	fprintf(stderr, "mtstatus: fatal: %s\n", strerror(code));
+	if (!to_stdout) {
+		if (remove(pidfile) < 0) {
+			fprintf(stderr, "Unable to remove %s", pidfile);
+		}
+	}
 	exit(EXIT_FAILURE);
 }
 
@@ -370,12 +376,12 @@ void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 	 */
 	r = pthread_mutex_lock(&sbar->mutex);
 	if (r != 0) {
-		die(r);
+		fatal(r);
 	}
 	while (!sbar->dirty) {
 		r = pthread_cond_wait(&sbar->dirty_cond, &sbar->mutex);
 		if (r != 0) {
-			die(r);
+			fatal(r);
 		}
 	}
 	for (i = 0; (ptr < end) && (i < sbar->ncomponents - 1); i++) {
@@ -396,7 +402,7 @@ void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 	sbar->dirty = false;
 	r = pthread_mutex_unlock(&sbar->mutex);
 	if (r != 0) {
-		die(r);
+		fatal(r);
 	}
 }
 
@@ -416,7 +422,7 @@ void sbar_component_update(const sbar_comp_t *c)
 	 */
 	r = pthread_mutex_lock(&c->sbar->mutex);
 	if (r != 0) {
-		die(r);
+		fatal(r);
 	}
 	static_assert(MAXLEN >= sizeof(tmpbuf),
 		      "size of component buffer < sizeof(tmpbuf)");
@@ -424,11 +430,11 @@ void sbar_component_update(const sbar_comp_t *c)
 	c->sbar->dirty = true;
 	r = pthread_cond_signal(&c->sbar->dirty_cond);
 	if (r != 0) {
-		die(r);
+		fatal(r);
 	}
 	r = pthread_mutex_unlock(&c->sbar->mutex);
 	if (r != 0) {
-		die(r);
+		fatal(r);
 	}
 }
 
@@ -442,10 +448,10 @@ void *thread_flush(void *arg)
 
 		if (to_stdout) {
 			if (puts(status) == EOF) {
-				die(errno);
+				fatal(errno);
 			}
 			if (fflush(stdout) == EOF) {
-				die(errno);
+				fatal(errno);
 			}
 		} else {
 			XStoreName(dpy, DefaultRootWindow(dpy), status);
@@ -474,16 +480,16 @@ void *thread_async(void *arg)
 	int sig, r;
 
 	if (sigemptyset(&sigset) < 0) {
-		die(errno);
+		fatal(errno);
 	}
 	if (sigaddset(&sigset, c->signum) < 0) {
-		die(errno);
+		fatal(errno);
 	}
 
 	while (true) {
 		r = sigwait(&sigset, &sig);
 		if (r == -1) {
-			die(r);
+			fatal(r);
 		}
 		assert(sig == c->signum && "unexpected signal received");
 		sbar_component_update(c);
@@ -508,21 +514,21 @@ void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 
 	sbar->comp_bufs = calloc(ncomponents * (size_t)MAXLEN, sizeof(char));
 	if (sbar->comp_bufs == NULL) {
-		die(errno);
+		fatal(errno);
 	}
 	sbar->ncomponents = ncomponents;
 	sbar->components = calloc(ncomponents, sizeof(sbar_comp_t));
 	if (sbar->components == NULL) {
-		die(errno);
+		fatal(errno);
 	}
 	sbar->dirty = false;
 	r = pthread_mutex_init(&sbar->mutex, NULL);
 	if (r != 0) {
-		die(r);
+		fatal(r);
 	}
 	r = pthread_cond_init(&sbar->dirty_cond, NULL);
 	if (r != 0) {
-		die(r);
+		fatal(r);
 	}
 
 	/*
@@ -532,7 +538,7 @@ void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	 * since all threads inherit their signal mask from their creator.
 	 */
 	if (sigemptyset(&sigset) < 0) {
-		die(errno);
+		fatal(errno);
 	}
 
 	/* Create the components */
@@ -555,7 +561,7 @@ void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 			 */
 			cp->signum += SIGRTMIN;
 			if (sigaddset(&sigset, cp->signum) < 0) {
-				die(errno);
+				fatal(errno);
 			}
 		}
 
@@ -564,7 +570,7 @@ void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 
 	r = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 	if (r != 0) {
-		die(r);
+		fatal(r);
 	}
 }
 
@@ -577,15 +583,15 @@ void sbar_start(sbar_t *sbar)
 
 	r = pthread_attr_init(&attr);
 	if (r != 0) {
-		die(r);
+		fatal(r);
 	}
 	r = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 	if (r != 0) {
-		die(r);
+		fatal(r);
 	}
 	r = pthread_create(&sbar->thread, &attr, thread_flush, sbar);
 	if (r != 0) {
-		die(r);
+		fatal(r);
 	}
 
 	for (uint8_t i = 0; i < sbar->ncomponents; i++) {
@@ -593,21 +599,21 @@ void sbar_start(sbar_t *sbar)
 
 		r = pthread_create(&tid, &attr, thread_once, c);
 		if (r != 0) {
-			die(r);
+			fatal(r);
 		}
 
 		if (c->interval >= 0) {
 			r = pthread_create(&c->thr_repeating, &attr,
 					   thread_repeating, c);
 			if (r != 0) {
-				die(r);
+				fatal(r);
 			}
 		}
 		if (c->signum >= 0) {
 			r = pthread_create(&c->thr_async, &attr, thread_async,
 					   c);
 			if (r != 0) {
-				die(r);
+				fatal(r);
 			}
 		}
 	}
@@ -623,7 +629,6 @@ void usage(FILE *f)
 
 int main(int argc, char *argv[])
 {
-	char pidfile[MAXLEN];
 	sbar_t sbar;
 
 	int option;
@@ -648,29 +653,29 @@ int main(int argc, char *argv[])
 			 basename(argv[0]));
 		f = fopen(pidfile, "w");
 		if (f == NULL) {
-			die(errno);
+			fatal(errno);
 		}
 		if (fprintf(f, "%ld", (long)getpid()) < 0) {
-			die(errno);
+			fatal(errno);
 		}
 		fclose(f);
 
 		dpy = XOpenDisplay(NULL);
 		if (dpy == NULL) {
-			die(errno);
+			fatal(errno);
 		}
 	}
 
 	/* SIGINT and SIGTERM must be delivered only to the initial thread */
 	sigset_t sigset;
 	if (sigemptyset(&sigset) < 0) {
-		die(errno);
+		fatal(errno);
 	}
 	if (sigaddset(&sigset, SIGINT) < 0) {
-		die(errno);
+		fatal(errno);
 	}
 	if (sigaddset(&sigset, SIGTERM) < 0) {
-		die(errno);
+		fatal(errno);
 	}
 	pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 
@@ -682,7 +687,7 @@ int main(int argc, char *argv[])
 	int sig, r;
 	r = sigwait(&sigset, &sig);
 	if (r == -1) {
-		die(r);
+		fatal(r);
 	}
 
 	switch (sig) {
