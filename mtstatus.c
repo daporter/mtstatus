@@ -78,22 +78,22 @@ struct sbar {
 
 comp_ret_t component_keyb_ind(char *buf, size_t bufsize, const char *args);
 comp_ret_t component_notmuch(char *buf, size_t bufsize, const char *args);
-comp_ret_t component_parse_meminfo(char *out, size_t outsize, char *in,
-				   size_t insize);
 comp_ret_t component_mem_avail(char *buf, size_t bufsize, const char *args);
 comp_ret_t component_disk_free(char *buf, size_t bufsize, const char *path);
+comp_ret_t component_volume(char *buf, size_t bufsize, const char *path);
 comp_ret_t component_datetime(char *buf, size_t bufsize, const char *date_fmt);
 
 /* clang-format off */
 const sbar_comp_defn_t component_defns[] = {
-	/* function,           arguments,      interval, signal (SIGRTMIN+n) */
+	/* /\* function,        arguments,     interval, signal (SIGRTMIN+n) *\/ */
 	{ component_keyb_ind,              0,  -1,        0 },
 	{ component_notmuch,               0,  -1,        1 },
 	/* network traffic */
+	/* cpu */
 	{ component_mem_avail,             0,   2,       -1 },
 	{ component_disk_free,           "/",  15,       -1 },
-	/* volume */
-	/* wifi */
+	{ component_volume,                0,  -1,        2 },
+	/* wifi network */
 	{ component_datetime,  "%a %d %b %R",  30,       -1 },
 };
 /* clang-format on */
@@ -189,7 +189,6 @@ comp_ret_t component_keyb_ind(char *buf, const size_t bufsize, const char *args)
 	}
 
 	XGetKeyboardControl(dpy, &state);
-	XCloseDisplay(dpy);
 
 	caps_on = state.led_mask & (1 << 0);
 	numlock_on = state.led_mask & (1 << 1);
@@ -229,8 +228,8 @@ comp_ret_t component_notmuch(char *buf, const size_t bufsize, const char *args)
 	return (comp_ret_t){ .ok = true };
 }
 
-comp_ret_t component_parse_meminfo(char *out, const size_t outsize, char *in,
-				   const size_t insize)
+static comp_ret_t component_parse_meminfo(char *out, const size_t outsize,
+					  char *in, const size_t insize)
 {
 	char *m, *s, *token, *saveptr;
 	uintmax_t val;
@@ -320,6 +319,21 @@ comp_ret_t component_disk_free(char *buf, const size_t bufsize,
 	return ret;
 }
 
+comp_ret_t component_volume(char *buf, const size_t bufsize, const char *path)
+{
+	char cmdbuf[MAXLEN] = { 0 };
+	char *const argv[] = { "pamixer", "--get-volume-human", NULL };
+
+	snprintf(buf, bufsize, "󰝟 %s", NO_VAL_STR);
+
+	if (util_run_cmd(cmdbuf, sizeof(cmdbuf), argv) != 0) {
+		return (comp_ret_t){ false, "Error running pamixer" };
+	}
+
+	snprintf(buf, bufsize, "󰕾 %s", cmdbuf);
+	return (comp_ret_t){ .ok = true };
+}
+
 comp_ret_t component_datetime(char *buf, const size_t bufsize,
 			      const char *date_fmt)
 {
@@ -375,10 +389,10 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 	 * Maintain the status bar "dirty" invariant.
 	 */
 	r = pthread_mutex_lock(&sbar->mutex);
-	assert(r != 0);
+	assert(r == 0);
 	while (!sbar->dirty) {
 		r = pthread_cond_wait(&sbar->dirty_cond, &sbar->mutex);
-		assert(r != 0);
+		assert(r == 0);
 	}
 	for (i = 0; (ptr < end) && (i < sbar->ncomponents - 1); i++) {
 		cbuf = sbar->components[i].buf;
@@ -397,7 +411,7 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 
 	sbar->dirty = false;
 	r = pthread_mutex_unlock(&sbar->mutex);
-	assert(r != 0);
+	assert(r == 0);
 }
 
 static void sbar_component_update(const sbar_comp_t *c)
@@ -415,15 +429,15 @@ static void sbar_component_update(const sbar_comp_t *c)
 	 * Maintain the status bar "dirty" invariant.
 	 */
 	r = pthread_mutex_lock(&c->sbar->mutex);
-	assert(r != 0);
+	assert(r == 0);
 	static_assert(MAXLEN >= sizeof(tmpbuf),
 		      "size of component buffer < sizeof(tmpbuf)");
 	memcpy(c->buf, tmpbuf, sizeof(tmpbuf));
 	c->sbar->dirty = true;
 	r = pthread_cond_signal(&c->sbar->dirty_cond);
-	assert(r != 0);
+	assert(r == 0);
 	r = pthread_mutex_unlock(&c->sbar->mutex);
-	assert(r != 0);
+	assert(r == 0);
 }
 
 static void *thread_flush(void *arg)
