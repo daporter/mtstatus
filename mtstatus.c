@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <libgen.h>
+#include <linux/wireless.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -12,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/statvfs.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -81,19 +83,20 @@ comp_ret_t comp_notmuch(char *buf, size_t bufsize, const char *args);
 comp_ret_t comp_mem_avail(char *buf, size_t bufsize, const char *args);
 comp_ret_t comp_disk_free(char *buf, size_t bufsize, const char *path);
 comp_ret_t comp_volume(char *buf, size_t bufsize, const char *path);
+comp_ret_t comp_wifi(char *buf, size_t bufsize, const char *device);
 comp_ret_t comp_datetime(char *buf, size_t bufsize, const char *date_fmt);
 
 /* clang-format off */
 const sbar_comp_defn_t component_defns[] = {
-	/* /\* function,        arguments,     interval, signal (SIGRTMIN+n) *\/ */
-	{ comp_keyb_ind,              0,  -1,        0 },
-	{ comp_notmuch,               0,  -1,        1 },
+	/* function,      arguments,      interval, signal (SIGRTMIN+n) */
+	{ comp_keyb_ind,  0,              -1,        0 },
+	{ comp_notmuch,   0,              -1,        1 },
 	/* network traffic */
 	/* cpu */
-	{ comp_mem_avail,             0,   2,       -1 },
-	{ comp_disk_free,           "/",  15,       -1 },
-	{ comp_volume,                0,  -1,        2 },
-	/* wifi network */
+	{ comp_mem_avail, 0,               2,       -1 },
+	{ comp_disk_free, "/",            15,       -1 },
+	{ comp_volume,    0,              -1,        2 },
+	{ comp_wifi,      "wlan0",         5,       -1 },
 	{ comp_datetime,  "%a %d %b %R",  30,       -1 },
 };
 /* clang-format on */
@@ -284,6 +287,92 @@ comp_ret_t comp_mem_avail(char *buf, const size_t bufsize, const char *args)
 	snprintf(buf, bufsize, " %s", val_str);
 	ret.ok = true;
 	return ret;
+}
+
+static comp_ret_t wifi_essid(char *buf, const char *iface)
+{
+	assert(iface);
+	size_t len = strlen(iface);
+	assert(len < IFNAMSIZ);
+
+	struct iwreq iwreq = { 0 };
+	iwreq.u.essid.length = IW_ESSID_MAX_SIZE + 1;
+	memcpy(iwreq.ifr_name, iface, len);
+
+	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sockfd < 0) {
+		return (comp_ret_t){ false, "Unable to create socket" };
+	}
+	iwreq.u.essid.pointer = buf;
+	if (ioctl(sockfd, SIOCGIWESSID, &iwreq) < 0) {
+		close(sockfd);
+		return (comp_ret_t){ false, "Unable to get ESSID" };
+	}
+
+	close(sockfd);
+	return (comp_ret_t){ .ok = true };
+}
+
+static comp_ret_t wifi_strength(char *out, const size_t outsize,
+				const char *iface, char *in,
+				const size_t insize)
+{
+	in[insize - 1] = '\0';
+
+	char *s = strstr(in, iface);
+	if (s == NULL) {
+		return (comp_ret_t){ false, "Unable to parse wifi strength" };
+	}
+	int i;
+	char *p, *token, *saveptr;
+	for (i = 0, p = s; i < 3; i++, p = NULL) {
+		token = strtok_r(p, " ", &saveptr);
+		if (!token) {
+			return (comp_ret_t){ false,
+					     "Unable to parse wifi strength" };
+		}
+	}
+	uintmax_t val = strtoumax(token, NULL, 0);
+	assert(val != 0 && val != INTMAX_MAX && val != UINTMAX_MAX);
+
+	/* 70 is the max of /proc/net/wireless */
+	snprintf(out, outsize, "%ld", (val * 100 / 70));
+	return (comp_ret_t){ .ok = true };
+}
+
+comp_ret_t comp_wifi(char *buf, const size_t bufsize, const char *device)
+{
+	snprintf(buf, bufsize, "󰖪 %s", NO_VAL_STR);
+
+	char essid[IW_ESSID_MAX_SIZE + 1];
+	wifi_essid(essid, device);
+
+	FILE *f = fopen("/proc/net/wireless", "r");
+	if (!f) {
+		return (comp_ret_t){ false,
+				     "Error opening /proc/net/wireless" };
+	}
+	char *in;
+	size_t len;
+	ssize_t nread = getdelim(&in, &len, '\0', f);
+	if (nread == -1) {
+		free(in);
+		fclose(f);
+		return (comp_ret_t){ false,
+				     "Error reading /proc/net/wireless" };
+	}
+	char strength[MAXLEN];
+	comp_ret_t ret =
+		wifi_strength(strength, sizeof(strength), device, in, nread);
+	free(in);
+	fclose(f);
+	if (!ret.ok) {
+		return ret;
+	}
+
+	snprintf(buf, bufsize, " %s %s%%", essid, strength);
+
+	return (comp_ret_t){ .ok = true };
 }
 
 comp_ret_t comp_disk_free(char *buf, const size_t bufsize, const char *path)
