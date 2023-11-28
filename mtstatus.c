@@ -248,13 +248,7 @@ static comp_ret_t comp_parse_meminfo(char *out, const size_t outsize, char *in,
 		}
 	}
 	val = strtoumax(token, NULL, 0);
-	if (val == 0 || val == INTMAX_MAX || val == UINTMAX_MAX) {
-		comp_ret_t ret;
-		ret.ok = false;
-		snprintf(ret.message, sizeof(ret.message),
-			 "Unable to convert value %s", token);
-		return ret;
-	}
+	assert(val != 0 && val != INTMAX_MAX && val != UINTMAX_MAX);
 
 	util_fmt_human(out, outsize, val * K_IEC, K_IEC);
 	return (comp_ret_t){ .ok = true };
