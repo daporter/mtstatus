@@ -231,26 +231,24 @@ comp_ret_t comp_notmuch(char *buf, const size_t bufsize, const char *args)
 	return (comp_ret_t){ .ok = true };
 }
 
-static comp_ret_t comp_parse_meminfo(char *out, const size_t outsize, char *in,
-				     const size_t insize)
+static comp_ret_t parse_meminfo(char *out, const size_t outsize, char *data,
+				const size_t insize)
 {
-	char *m, *s, *token, *saveptr;
-	uintmax_t val;
-	int i;
+	data[insize - 1] = '\0';
 
-	in[insize - 1] = '\0';
-
-	m = strstr(in, "MemAvailable");
-	if (m == NULL) {
+	char *s = strstr(data, "MemAvailable");
+	if (s == NULL) {
 		return (comp_ret_t){ false, "Unable to parse meminfo" };
 	}
-	for (i = 0, s = m; i < 2; i++, s = NULL) {
-		token = strtok_r(s, " ", &saveptr);
-		if (token == NULL) {
+	int i;
+	char *p, *token, *saveptr;
+	for (i = 0, p = s; i < 2; i++, p = NULL) {
+		token = strtok_r(p, " ", &saveptr);
+		if (!token) {
 			return (comp_ret_t){ false, "Unable to parse meminfo" };
 		}
 	}
-	val = strtoumax(token, NULL, 0);
+	uintmax_t val = strtoumax(token, NULL, 0);
 	assert(val != 0 && val != INTMAX_MAX && val != UINTMAX_MAX);
 
 	util_fmt_human(out, outsize, val * K_IEC, K_IEC);
@@ -259,34 +257,31 @@ static comp_ret_t comp_parse_meminfo(char *out, const size_t outsize, char *in,
 
 comp_ret_t comp_mem_avail(char *buf, const size_t bufsize, const char *args)
 {
-	FILE *f;
-	char *meminfo = NULL;
-	size_t len;
-	ssize_t nread;
-	char val_str[bufsize];
-	comp_ret_t ret;
-
 	snprintf(buf, bufsize, " %s", NO_VAL_STR);
 
-	f = fopen("/proc/meminfo", "r");
-	if (f == NULL)
+	FILE *f = fopen("/proc/meminfo", "r");
+	if (!f) {
 		return (comp_ret_t){ false, "Error opening /proc/meminfo" };
-	nread = getdelim(&meminfo, &len, '\0', f);
+	}
+	char *data = NULL;
+	size_t len;
+	ssize_t nread = getdelim(&data, &len, '\0', f);
 	if (nread == -1) {
-		free(meminfo);
+		free(data);
 		fclose(f);
 		return (comp_ret_t){ false, "Error reading /proc/meminfo" };
 	}
-	ret = comp_parse_meminfo(val_str, bufsize, meminfo, nread);
-	free(meminfo);
+	char value[MAXLEN];
+	comp_ret_t ret = parse_meminfo(value, bufsize, data, nread);
+	free(data);
 	fclose(f);
 	if (!ret.ok) {
 		return ret;
 	}
 
-	snprintf(buf, bufsize, " %s", val_str);
-	ret.ok = true;
-	return ret;
+	snprintf(buf, bufsize, " %s", value);
+
+	return (comp_ret_t){ .ok = true };
 }
 
 static comp_ret_t wifi_essid(char *buf, const char *iface)
@@ -313,13 +308,13 @@ static comp_ret_t wifi_essid(char *buf, const char *iface)
 	return (comp_ret_t){ .ok = true };
 }
 
-static comp_ret_t wifi_strength(char *out, const size_t outsize,
-				const char *iface, char *in,
-				const size_t insize)
+static comp_ret_t parse_wireless(char *out, const size_t outsize,
+				 const char *iface, char *data,
+				 const size_t insize)
 {
-	in[insize - 1] = '\0';
+	data[insize - 1] = '\0';
 
-	char *s = strstr(in, iface);
+	char *s = strstr(data, iface);
 	if (s == NULL) {
 		return (comp_ret_t){ false, "Unable to parse wifi strength" };
 	}
@@ -342,35 +337,35 @@ static comp_ret_t wifi_strength(char *out, const size_t outsize,
 
 comp_ret_t comp_wifi(char *buf, const size_t bufsize, const char *device)
 {
-	snprintf(buf, bufsize, "󰖪 %s", NO_VAL_STR);
-
 	char essid[IW_ESSID_MAX_SIZE + 1];
 	wifi_essid(essid, device);
+
+	snprintf(buf, bufsize, "󰖪 %s", NO_VAL_STR);
 
 	FILE *f = fopen("/proc/net/wireless", "r");
 	if (!f) {
 		return (comp_ret_t){ false,
 				     "Error opening /proc/net/wireless" };
 	}
-	char *in = NULL;
+	char *data = NULL;
 	size_t len;
-	ssize_t nread = getdelim(&in, &len, '\0', f);
+	ssize_t nread = getdelim(&data, &len, '\0', f);
 	if (nread == -1) {
-		free(in);
+		free(data);
 		fclose(f);
 		return (comp_ret_t){ false,
 				     "Error reading /proc/net/wireless" };
 	}
-	char strength[MAXLEN];
+	char value[MAXLEN];
 	comp_ret_t ret =
-		wifi_strength(strength, sizeof(strength), device, in, nread);
-	free(in);
+		parse_wireless(value, sizeof(value), device, data, nread);
+	free(data);
 	fclose(f);
 	if (!ret.ok) {
 		return ret;
 	}
 
-	snprintf(buf, bufsize, " %s %s%%", essid, strength);
+	snprintf(buf, bufsize, " %s %s%%", essid, value);
 
 	return (comp_ret_t){ .ok = true };
 }
