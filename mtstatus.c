@@ -352,7 +352,7 @@ comp_ret_t comp_wifi(char *buf, const size_t bufsize, const char *device)
 		return (comp_ret_t){ false,
 				     "Error opening /proc/net/wireless" };
 	}
-	char *in;
+	char *in = NULL;
 	size_t len;
 	ssize_t nread = getdelim(&in, &len, '\0', f);
 	if (nread == -1) {
