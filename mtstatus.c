@@ -78,14 +78,14 @@ struct sbar {
 	pthread_t thread;
 };
 
-comp_ret_t comp_keyb_ind(char *buf, size_t bufsize, const char *args);
-comp_ret_t comp_notmuch(char *buf, size_t bufsize, const char *args);
-comp_ret_t comp_cpu(char *buf, size_t bufsize, const char *args);
-comp_ret_t comp_mem_avail(char *buf, size_t bufsize, const char *args);
-comp_ret_t comp_disk_free(char *buf, size_t bufsize, const char *path);
-comp_ret_t comp_volume(char *buf, size_t bufsize, const char *path);
-comp_ret_t comp_wifi(char *buf, size_t bufsize, const char *device);
-comp_ret_t comp_datetime(char *buf, size_t bufsize, const char *date_fmt);
+static comp_ret_t comp_keyb_ind(char *buf, size_t bufsize, const char *args);
+static comp_ret_t comp_notmuch(char *buf, size_t bufsize, const char *args);
+static comp_ret_t comp_cpu(char *buf, size_t bufsize, const char *args);
+static comp_ret_t comp_mem_avail(char *buf, size_t bufsize, const char *args);
+static comp_ret_t comp_disk_free(char *buf, size_t bufsize, const char *path);
+static comp_ret_t comp_volume(char *buf, size_t bufsize, const char *path);
+static comp_ret_t comp_wifi(char *buf, size_t bufsize, const char *device);
+static comp_ret_t comp_datetime(char *buf, size_t bufsize, const char *date_fmt);
 
 /* clang-format off */
 const sbar_comp_defn_t component_defns[] = {
@@ -183,7 +183,7 @@ static int util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 	return EXIT_SUCCESS;
 }
 
-comp_ret_t comp_keyb_ind(char *buf, const size_t bufsize, const char *args)
+static comp_ret_t comp_keyb_ind(char *buf, const size_t bufsize, const char *args)
 {
 	XKeyboardState state;
 	bool caps_on, numlock_on;
@@ -213,7 +213,7 @@ comp_ret_t comp_keyb_ind(char *buf, const size_t bufsize, const char *args)
 	return (comp_ret_t){ .ok = true };
 }
 
-comp_ret_t comp_notmuch(char *buf, const size_t bufsize, const char *args)
+static comp_ret_t comp_notmuch(char *buf, const size_t bufsize, const char *args)
 {
 	char cmdbuf[MAXLEN] = { 0 };
 	char *const argv[] = { "notmuch", "count",
@@ -258,7 +258,7 @@ static comp_ret_t parse_meminfo(char *out, const size_t outsize, char *data,
 	return (comp_ret_t){ .ok = true };
 }
 
-comp_ret_t comp_cpu(char *buf, const size_t bufsize, const char *args)
+static comp_ret_t comp_cpu(char *buf, const size_t bufsize, const char *args)
 {
 	const char proc_stat[] = "/proc/stat";
 
@@ -296,7 +296,7 @@ comp_ret_t comp_cpu(char *buf, const size_t bufsize, const char *args)
 	return (comp_ret_t){ .ok = true };
 }
 
-comp_ret_t comp_mem_avail(char *buf, const size_t bufsize, const char *args)
+static comp_ret_t comp_mem_avail(char *buf, const size_t bufsize, const char *args)
 {
 	snprintf(buf, bufsize, " %s", NO_VAL_STR);
 
@@ -376,7 +376,7 @@ static comp_ret_t parse_wireless(char *out, const size_t outsize,
 	return (comp_ret_t){ .ok = true };
 }
 
-comp_ret_t comp_wifi(char *buf, const size_t bufsize, const char *device)
+static comp_ret_t comp_wifi(char *buf, const size_t bufsize, const char *device)
 {
 	char essid[IW_ESSID_MAX_SIZE + 1];
 	wifi_essid(essid, device);
@@ -411,7 +411,7 @@ comp_ret_t comp_wifi(char *buf, const size_t bufsize, const char *device)
 	return (comp_ret_t){ .ok = true };
 }
 
-comp_ret_t comp_disk_free(char *buf, const size_t bufsize, const char *path)
+static comp_ret_t comp_disk_free(char *buf, const size_t bufsize, const char *path)
 {
 	struct statvfs fs;
 	char output[bufsize], errbuf[bufsize];
@@ -436,7 +436,7 @@ comp_ret_t comp_disk_free(char *buf, const size_t bufsize, const char *path)
 	return ret;
 }
 
-comp_ret_t comp_volume(char *buf, const size_t bufsize, const char *path)
+static comp_ret_t comp_volume(char *buf, const size_t bufsize, const char *path)
 {
 	char cmdbuf[MAXLEN] = { 0 };
 	char *const argv[] = { "pamixer", "--get-volume-human", NULL };
@@ -451,7 +451,7 @@ comp_ret_t comp_volume(char *buf, const size_t bufsize, const char *path)
 	return (comp_ret_t){ .ok = true };
 }
 
-comp_ret_t comp_datetime(char *buf, const size_t bufsize, const char *date_fmt)
+static comp_ret_t comp_datetime(char *buf, const size_t bufsize, const char *date_fmt)
 {
 	time_t t;
 	struct tm now;
