@@ -80,6 +80,7 @@ struct sbar {
 
 comp_ret_t comp_keyb_ind(char *buf, size_t bufsize, const char *args);
 comp_ret_t comp_notmuch(char *buf, size_t bufsize, const char *args);
+comp_ret_t comp_cpu(char *buf, size_t bufsize, const char *args);
 comp_ret_t comp_mem_avail(char *buf, size_t bufsize, const char *args);
 comp_ret_t comp_disk_free(char *buf, size_t bufsize, const char *path);
 comp_ret_t comp_volume(char *buf, size_t bufsize, const char *path);
@@ -92,7 +93,7 @@ const sbar_comp_defn_t component_defns[] = {
 	{ comp_keyb_ind,  0,              -1,        0 },
 	{ comp_notmuch,   0,              -1,        1 },
 	/* network traffic */
-	/* cpu */
+	{ comp_cpu,       0,               2,       -1 },
 	{ comp_mem_avail, 0,               2,       -1 },
 	{ comp_disk_free, "/",            15,       -1 },
 	{ comp_volume,    0,              -1,        2 },
@@ -104,6 +105,8 @@ const sbar_comp_defn_t component_defns[] = {
 char pidfile[MAXLEN];
 bool to_stdout = false;
 Display *dpy = NULL;
+
+pthread_mutex_t cpu_data_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 static char *util_cat(char *dest, const char *end, const char *str)
 {
@@ -252,6 +255,44 @@ static comp_ret_t parse_meminfo(char *out, const size_t outsize, char *data,
 	assert(val != 0 && val != INTMAX_MAX && val != UINTMAX_MAX);
 
 	util_fmt_human(out, outsize, val * K_IEC, K_IEC);
+	return (comp_ret_t){ .ok = true };
+}
+
+comp_ret_t comp_cpu(char *buf, const size_t bufsize, const char *args)
+{
+	const char proc_stat[] = "/proc/stat";
+
+	snprintf(buf, bufsize, " %s", NO_VAL_STR);
+
+	FILE *fp = fopen(proc_stat, "r");
+	if (!fp) {
+		return (comp_ret_t){ false, "Error opening /proc/stat" };
+	}
+
+	uint64_t t[7];
+	int n = fscanf(fp,
+		       "cpu  %lu %lu %lu %lu %lu %lu %lu",
+		       &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6]);
+	fclose(fp);
+	if (n != LEN(t)) {
+		return (comp_ret_t){ false, "Error reading /proc/stat" };
+	}
+
+	static uint64_t total_prev, idle_prev;
+
+	uint64_t total_cur = t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6];
+	uint64_t idle_cur = t[3];
+
+	pthread_mutex_lock(&cpu_data_mtx);
+	uint64_t total = total_cur - total_prev;
+	uint64_t idle  = idle_cur - idle_prev;
+	total_prev = total_cur;
+	idle_prev  = idle_cur;
+	pthread_mutex_unlock(&cpu_data_mtx);
+
+	uint64_t usage = 100 * (total - idle) / total;
+	snprintf(buf, bufsize, " %ld%%", usage);
+
 	return (comp_ret_t){ .ok = true };
 }
 
