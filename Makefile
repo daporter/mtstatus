@@ -6,7 +6,7 @@ CFLAGS	 = -std=c11 -pthread -g3 -Wall -Wextra -Wpedantic -Wno-unused-parameter -
 LDFLAGS  =
 LDLIBS	 = -lX11
 
-mtstatus: mtstatus.c
+mtstatus: mtstatus.c component.c util.c util.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
 
 clean:
