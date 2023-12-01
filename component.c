@@ -253,7 +253,7 @@ static comp_ret_t comp_wifi(char *buf, const size_t bufsize, const char *device)
 		return ret;
 	}
 
-	snprintf(buf, bufsize, " %s %s%%", essid, value);
+	snprintf(buf, bufsize, " %s%% %s", value, essid);
 
 	return (comp_ret_t){ .ok = true };
 }
