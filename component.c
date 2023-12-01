@@ -71,32 +71,6 @@ static comp_ret_t comp_notmuch(char *buf, const size_t bufsize,
 	return (comp_ret_t){ .ok = true };
 }
 
-static comp_ret_t parse_meminfo(char *out, const size_t outsize, char *data,
-				const size_t datasz)
-{
-	data[datasz - 1] = '\0';
-
-	char *s = strstr(data, "MemAvailable");
-	if (s == NULL) {
-		return (comp_ret_t){ false, "Unable to parse meminfo" };
-	}
-	int i;
-	char *p, *token, *saveptr;
-	for (i = 0, p = s;
-	     i < 2;
-	     i++, p = NULL) {
-		token = strtok_r(p, " ", &saveptr);
-		if (!token) {
-			return (comp_ret_t){ false, "Unable to parse meminfo" };
-		}
-	}
-	uintmax_t val = strtoumax(token, NULL, 0);
-	assert(val != 0 && val != INTMAX_MAX && val != UINTMAX_MAX);
-
-	util_fmt_human(out, outsize, val * K_IEC, K_IEC);
-	return (comp_ret_t){ .ok = true };
-}
-
 static comp_ret_t comp_cpu(char *buf, const size_t bufsize, const char *args)
 {
 	FILE *fp = fopen("/proc/stat", "r");
@@ -117,14 +91,14 @@ static comp_ret_t comp_cpu(char *buf, const size_t bufsize, const char *args)
 
 	static uint64_t total_prev, idle_prev;
 
-	uint64_t total_cur	= t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6];
-	uint64_t idle_cur	= t[3];
+	uint64_t total_cur = t[0] + t[1] + t[2] + t[3] + t[4] + t[5] + t[6];
+	uint64_t idle_cur  = t[3];
 
 	pthread_mutex_lock(&cpu_data_mtx);
-	uint64_t total	= total_cur - total_prev;
-	uint64_t idle	= idle_cur - idle_prev;
-	total_prev	= total_cur;
-	idle_prev	= idle_cur;
+	uint64_t total = total_cur - total_prev;
+	uint64_t idle  = idle_cur - idle_prev;
+	total_prev = total_cur;
+	idle_prev  = idle_cur;
 	pthread_mutex_unlock(&cpu_data_mtx);
 
 	uint64_t usage = 100 * (total - idle) / total;
@@ -133,12 +107,48 @@ static comp_ret_t comp_cpu(char *buf, const size_t bufsize, const char *args)
 	return (comp_ret_t){ .ok = true };
 }
 
-static comp_ret_t comp_mem_avail(char *buf, const size_t bufsize,
-				 const char *args)
+long parse_val(char *data, size_t datasz, const char *target, unsigned nfield)
 {
-	FILE *f = fopen("/proc/meminfo", "r");
+	data[datasz - 1] = '\0';
+
+	char *s = strstr(data, target);
+	if (s == NULL) {
+		return -1;
+	}
+	unsigned i;
+	char *token = NULL;
+	char *p, *saveptr;
+	for (i = 0, p = s;
+	     i < nfield && token;
+	     i++, p = NULL) {
+		token = strtok_r(p, " ", &saveptr);
+	}
+	if (!token) {
+		return -1;
+	}
+	return strtol(token, NULL, 0);
+}
+
+static comp_ret_t parse_meminfo(char *out, const size_t outsize,
+				char *data, const size_t datasz,
+				const char *target)
+{
+	long val = parse_val(data, datasz, target, 2);
+	if (val < 0) {
+		return (comp_ret_t){ false, "Unable to parse meminfo" };
+	}
+	util_fmt_human(out, outsize, val * K_IEC, K_IEC);
+	return (comp_ret_t){ .ok = true };
+}
+
+comp_ret_t parse_file(char *buf, const size_t bufsize,
+		      char *file, const char *target,
+		      comp_ret_t (*parse)(char *, const size_t,
+					  char *, const size_t,
+					  const char *))
+{
+	FILE *f = fopen(file, "r");
 	if (!f) {
-		snprintf(buf, bufsize, " %s", NO_VAL_STR);
 		return (comp_ret_t){ false, "Error opening /proc/meminfo" };
 	}
 	char	*data = NULL;
@@ -147,13 +157,24 @@ static comp_ret_t comp_mem_avail(char *buf, const size_t bufsize,
 	if (nread == -1) {
 		free(data);
 		fclose(f);
-		snprintf(buf, bufsize, " %s", NO_VAL_STR);
 		return (comp_ret_t){ false, "Error reading /proc/meminfo" };
 	}
-	char value[BUF_SIZE];
-	comp_ret_t ret = parse_meminfo(value, bufsize, data, nread);
+	comp_ret_t ret = parse(buf, bufsize, data, nread, target);
 	free(data);
 	fclose(f);
+	if (!ret.ok) {
+		return ret;
+	}
+	return (comp_ret_t){ .ok = true };
+}
+
+static comp_ret_t comp_mem_avail(char *buf, const size_t bufsize,
+				 const char *args)
+{
+	char value[BUF_SIZE];
+	comp_ret_t ret =
+		parse_file(value, sizeof(value),
+			   "/proc/meminfo", "MemAvailable", parse_meminfo);
 	if (!ret.ok) {
 		snprintf(buf, bufsize, " %s", NO_VAL_STR);
 		return ret;
@@ -187,28 +208,13 @@ static comp_ret_t wifi_essid(char *buf, const char *iface)
 }
 
 static comp_ret_t parse_wireless(char *out, const size_t outsize,
-				 const char *iface, char *data,
-				 const size_t datasz)
+				 char *data, const size_t datasz,
+				 const char *target)
 {
-	data[datasz - 1] = '\0';
-
-	char *s = strstr(data, iface);
-	if (s == NULL) {
+	long val = parse_val(data, datasz, target, 3);
+	if (val < 0) {
 		return (comp_ret_t){ false, "Unable to parse wifi strength" };
 	}
-	int i;
-	char *p, *token, *saveptr;
-	for (i = 0, p = s;
-	     i < 3;
-	     i++, p = NULL) {
-		token = strtok_r(p, " ", &saveptr);
-		if (!token) {
-			return (comp_ret_t){ false,
-					     "Unable to parse wifi strength" };
-		}
-	}
-	uintmax_t val = strtoumax(token, NULL, 0);
-	assert(val != 0 && val != INTMAX_MAX && val != UINTMAX_MAX);
 
 	/* 70 is the max of /proc/net/wireless */
 	snprintf(out, outsize, "%ld", (val * 100 / 70));
@@ -220,28 +226,12 @@ static comp_ret_t comp_wifi(char *buf, const size_t bufsize, const char *device)
 	char essid[IW_ESSID_MAX_SIZE + 1];
 	wifi_essid(essid, device);
 
-	FILE *f = fopen("/proc/net/wireless", "r");
-	if (!f) {
-		snprintf(buf, bufsize, "󰖪 %s", NO_VAL_STR);
-		return (comp_ret_t){ false,
-				     "Error opening /proc/net/wireless" };
-	}
-	char *data = NULL;
-	size_t len;
-	ssize_t nread = getdelim(&data, &len, '\0', f);
-	if (nread == -1) {
-		free(data);
-		fclose(f);
-		snprintf(buf, bufsize, "󰖪 %s", NO_VAL_STR);
-		return (comp_ret_t){ false,
-				     "Error reading /proc/net/wireless" };
-	}
 	char value[BUF_SIZE];
-	comp_ret_t ret;
-	ret = parse_wireless(value, sizeof(value), device, data, nread);
-	free(data);
-	fclose(f);
+	comp_ret_t ret =
+		parse_file(value, sizeof(value),
+			   "/proc/net/wireless", device, parse_wireless);
 	if (!ret.ok) {
+		snprintf(buf, bufsize, " %s", NO_VAL_STR);
 		return ret;
 	}
 	snprintf(buf, bufsize, " %s%% %s", value, essid);
