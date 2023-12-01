@@ -1,6 +1,6 @@
+#include "mtstatus.h"
 #include "util.h"
 
-#include <X11/Xlib.h>
 #include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
@@ -15,12 +15,9 @@
 #include <sys/statvfs.h>
 #include <unistd.h>
 
-#define NO_VAL_STR "n/a"
-
 #define BUF_SIZE 128
 
 typedef struct comp_ret comp_ret_t;
-
 struct comp_ret {
 	bool ok;
 	char message[BUF_SIZE];
@@ -31,11 +28,6 @@ pthread_mutex_t cpu_data_mtx = PTHREAD_MUTEX_INITIALIZER;
 static comp_ret_t comp_keyb_ind(char *buf, const size_t bufsize,
 				const char *args)
 {
-	Display *dpy = XOpenDisplay(NULL);
-	if (!dpy) {
-		return (comp_ret_t){ false, "Unable to open display" };
-	}
-
 	XKeyboardState state;
 	XGetKeyboardControl(dpy, &state);
 
@@ -61,7 +53,7 @@ static comp_ret_t comp_notmuch(char *buf, const size_t bufsize,
 			       const char *args)
 {
 	char *const argv[]= { "notmuch",
-                               "count",
+			       "count",
 			       "tag:unread NOT tag:archived",
 			       NULL };
 	char cmdbuf[BUF_SIZE] = { 0 };
@@ -255,6 +247,19 @@ static comp_ret_t comp_wifi(char *buf, const size_t bufsize, const char *device)
 	return (comp_ret_t){ .ok = true };
 }
 
+static comp_ret_t ret_err(char *buf, const size_t bufsize, const char* icon,
+			  const char *fmt, const int errnum)
+{
+	snprintf(buf, bufsize, "%s %s", icon, NO_VAL_STR);
+
+	comp_ret_t ret;
+	ret.ok = false;
+	char errbuf[BUF_SIZE];
+	strerror_r(errnum, errbuf, sizeof(errbuf));
+	snprintf(ret.message, sizeof(ret.message), fmt, errbuf);
+	return ret;
+}
+
 static comp_ret_t comp_disk_free(char *buf, const size_t bufsize,
 				 const char *path)
 {
@@ -262,13 +267,7 @@ static comp_ret_t comp_disk_free(char *buf, const size_t bufsize,
 	struct statvfs fs;
 	int r = statvfs(path, &fs);
 	if (r < 0) {
-		snprintf(buf, bufsize, "󰋊 %s", NO_VAL_STR);
-		ret.ok = false;
-		char errbuf[bufsize];
-		strerror_r(r, errbuf, sizeof(errbuf));
-		snprintf(ret.message, sizeof(ret.message), "statvfs: '%s': %s",
-			 path, errbuf);
-		return ret;
+		return ret_err(buf, bufsize, "󰋊", "statvfs: '%s': %s", r);
 	}
 
 	char output[bufsize];
@@ -284,41 +283,34 @@ static comp_ret_t comp_volume(char *buf, const size_t bufsize, const char *path)
 	char *const argv[] = { "pamixer", "--get-volume-human", NULL };
 	char cmdbuf[BUF_SIZE] = { 0 };
 	if (util_run_cmd(cmdbuf, sizeof(cmdbuf), argv) != 0) {
-		snprintf(buf, bufsize, "󰝟 %s", NO_VAL_STR);
+		snprintf(buf, bufsize, "%s %s", "󰝟", NO_VAL_STR);
 		return (comp_ret_t){ false, "Error running pamixer" };
 	}
-	snprintf(buf, bufsize, "󰕾 %s", cmdbuf);
+	snprintf(buf, bufsize, "%s %s", "󰕾", cmdbuf);
 	return (comp_ret_t){ .ok = true };
 }
 
 static comp_ret_t comp_datetime(char *buf, const size_t bufsize,
 				const char *date_fmt)
 {
+	char icon[] = "";
 	comp_ret_t ret;
-	char errbuf[bufsize];
 	time_t t = time(NULL);
 	if (t == -1) {
-		snprintf(buf, bufsize, " %s", NO_VAL_STR);
-		ret.ok = false;
-		strerror_r(errno, errbuf, sizeof(errbuf));
-		snprintf(ret.message, sizeof(ret.message), "time: %s", errbuf);
-		return ret;
+		return ret_err(buf, bufsize, icon, "time: %s", errno);
 	}
 	struct tm now;
 	if (localtime_r(&t, &now) == NULL) {
-		snprintf(buf, bufsize, " %s", NO_VAL_STR);
-		ret.ok = false;
-		strerror_r(errno, errbuf, sizeof(errbuf));
-		snprintf(ret.message, sizeof(ret.message),
-			 "Unable to determine local time: %s", errbuf);
-		return ret;
+		return ret_err(buf, bufsize,
+			       icon, "Unable to determine local time: %s",
+			       errno);
 	}
 	char output[bufsize];
 	if (strftime(output, sizeof(output), date_fmt, &now) == 0) {
-		snprintf(buf, bufsize, " %s", NO_VAL_STR);
+		snprintf(buf, bufsize, "%s %s", icon, NO_VAL_STR);
 		return (comp_ret_t){ false, "Unable to format time" };
 	}
-	snprintf(buf, bufsize, " %s", output);
+	snprintf(buf, bufsize, "%s %s", icon, output);
 	ret.ok = true;
 	return ret;
 }

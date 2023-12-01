@@ -1,11 +1,10 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include "mtstatus.h"
 #include "component.c"
 #include "util.c"
 
 #include <libgen.h>
-
-#define DIVIDER "  "
 
 #define N_COMPONENTS ((sizeof component_defns) / (sizeof(sbar_comp_defn_t)))
 
@@ -69,7 +68,6 @@ static const sbar_comp_defn_t component_defns[] = {
 
 static char pidfile[MAXLEN];
 static bool to_stdout = false;
-static Display *dpy = NULL;
 
 static void fatal(int code)
 {
