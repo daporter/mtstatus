@@ -28,24 +28,25 @@ pthread_mutex_t cpu_data_mtx = PTHREAD_MUTEX_INITIALIZER;
 static comp_ret_t comp_keyb_ind(char *buf, const size_t bufsize,
 				const char *args)
 {
-	XKeyboardState state;
-	XGetKeyboardControl(dpy, &state);
+	if (dpy) {
+		XKeyboardState state;
+		XGetKeyboardControl(dpy, &state);
 
-	bool caps_on    = state.led_mask & (1 << 0);
-	bool numlock_on = state.led_mask & (1 << 1);
-	char *val = "";
-	if (caps_on && numlock_on) {
-		val = "Caps Num";
-	} else if (caps_on) {
-		val = "Caps";
-	} else if (numlock_on) {
-		val = "Num";
+		bool caps_on    = state.led_mask & (1 << 0);
+		bool numlock_on = state.led_mask & (1 << 1);
+		char *val = "";
+		if (caps_on && numlock_on) {
+			val = "Caps Num";
+		} else if (caps_on) {
+			val = "Caps";
+		} else if (numlock_on) {
+			val = "Num";
+		}
+
+		size_t len = strlen(val);
+		assert(bufsize >= len + 1);
+		memcpy(buf, val, len + 1);
 	}
-
-	size_t len = strlen(val);
-	assert(bufsize >= len + 1);
-	memcpy(buf, val, len + 1);
-
 	return (comp_ret_t){ .ok = true };
 }
 
