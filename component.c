@@ -5,8 +5,10 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <linux/if.h>
+#include <linux/limits.h>
 #include <linux/wireless.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,7 +25,8 @@ struct comp_ret {
 	char message[BUF_SIZE];
 };
 
-pthread_mutex_t cpu_data_mtx = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t cpu_data_mtx    = PTHREAD_MUTEX_INITIALIZER,
+		net_traffic_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 static comp_ret_t comp_keyb_ind(char *buf, const size_t bufsize,
 				const char *args)
@@ -71,6 +74,74 @@ static comp_ret_t comp_notmuch(char *buf, const size_t bufsize,
 	return (comp_ret_t){ .ok = true };
 }
 
+static comp_ret_t ret_err(char *buf, const size_t bufsize, const char* icon,
+			  const char *fmt, const int errnum)
+{
+	char errbuf[BUF_SIZE];
+	strerror_r(errnum, errbuf, sizeof(errbuf));
+
+	snprintf(buf, bufsize, "%s %s", icon, NO_VAL_STR);
+
+	comp_ret_t ret;
+	ret.ok = false;
+	snprintf(ret.message, sizeof(ret.message), fmt, errbuf);
+	return ret;
+}
+
+comp_ret_t parse_net_stats(char *buf, const size_t bufsize,
+			   uint64_t *val, char *path)
+{
+	comp_ret_t ret;
+
+	FILE *f = fopen(path, "r");
+	if (!f) {
+		snprintf(buf, bufsize, "▾%s ▴%s", NO_VAL_STR, NO_VAL_STR);
+		ret.ok = false;
+		snprintf(ret.message, sizeof(ret.message), "Unable to open %s", path);
+		return ret;
+	}
+	int n = fscanf(f, "%lu", val);
+	fclose(f);
+	if (n != 1) {
+		snprintf(buf, bufsize, "▾%s ▴%s", NO_VAL_STR, NO_VAL_STR);
+		ret.ok = false;
+		snprintf(ret.message, sizeof(ret.message), "Unable to parse %s", path);
+		return ret;
+	}
+	ret.ok = true;
+	return ret;
+}
+
+static comp_ret_t comp_net_traffic(char *buf, const size_t bufsize,
+				   const char *iface)
+{
+	char path[PATH_MAX];
+	snprintf(path, sizeof(path),
+		 "/sys/class/net/%s/statistics/rx_bytes", iface);
+	uint64_t rx_cur, tx_cur;
+	parse_net_stats(buf, bufsize, &rx_cur, path);
+
+	snprintf(path, sizeof(path),
+		 "/sys/class/net/%s/statistics/tx_bytes", iface);
+	parse_net_stats(buf, bufsize, &tx_cur, path);
+
+	static uint64_t rx_prev, tx_prev;
+
+	pthread_mutex_lock(&net_traffic_mtx);
+	uint64_t rx = rx_cur - rx_prev;
+	uint64_t tx = tx_cur - tx_prev;
+	rx_prev = rx_cur;
+	tx_prev = tx_cur;
+	pthread_mutex_unlock(&net_traffic_mtx);
+
+	char rx_buf[BUF_SIZE], tx_buf[BUF_SIZE];
+	util_fmt_human(rx_buf, sizeof(rx_buf), rx, K_IEC);
+	util_fmt_human(tx_buf, sizeof(tx_buf), tx, K_IEC);
+	snprintf(buf, bufsize, "▾%s%s ▴%s%s", rx_buf, "B", tx_buf, "B");
+
+	return (comp_ret_t){ .ok = true };
+}
+
 static comp_ret_t comp_cpu(char *buf, const size_t bufsize, const char *args)
 {
 	FILE *fp = fopen("/proc/stat", "r");
@@ -112,20 +183,17 @@ long parse_val(char *data, size_t datasz, const char *target, unsigned nfield)
 	data[datasz - 1] = '\0';
 
 	char *s = strstr(data, target);
-	if (s == NULL) {
-		return -1;
-	}
+	if (s == NULL) return -1;
 	unsigned i;
 	char *token = NULL;
 	char *p, *saveptr;
 	for (i = 0, p = s;
-	     i < nfield && token;
+	     i < nfield;
 	     i++, p = NULL) {
 		token = strtok_r(p, " ", &saveptr);
+		if (!token) return -1;
 	}
-	if (!token) {
-		return -1;
-	}
+	assert(token);
 	return strtol(token, NULL, 0);
 }
 
@@ -179,7 +247,7 @@ static comp_ret_t comp_mem_avail(char *buf, const size_t bufsize,
 		snprintf(buf, bufsize, " %s", NO_VAL_STR);
 		return ret;
 	}
-	snprintf(buf, bufsize, " %s", value);
+	snprintf(buf, bufsize, " %s%s", value, "B");
 	return (comp_ret_t){ .ok = true };
 }
 
@@ -238,19 +306,6 @@ static comp_ret_t comp_wifi(char *buf, const size_t bufsize, const char *device)
 	return (comp_ret_t){ .ok = true };
 }
 
-static comp_ret_t ret_err(char *buf, const size_t bufsize, const char* icon,
-			  const char *fmt, const int errnum)
-{
-	snprintf(buf, bufsize, "%s %s", icon, NO_VAL_STR);
-
-	comp_ret_t ret;
-	ret.ok = false;
-	char errbuf[BUF_SIZE];
-	strerror_r(errnum, errbuf, sizeof(errbuf));
-	snprintf(ret.message, sizeof(ret.message), fmt, errbuf);
-	return ret;
-}
-
 static comp_ret_t comp_disk_free(char *buf, const size_t bufsize,
 				 const char *path)
 {
@@ -264,7 +319,7 @@ static comp_ret_t comp_disk_free(char *buf, const size_t bufsize,
 	char output[bufsize];
 	util_fmt_human(output, sizeof(output), fs.f_frsize * fs.f_bavail,
 		       K_IEC);
-	snprintf(buf, bufsize, "󰋊 %s", output);
+	snprintf(buf, bufsize, "󰋊 %s%s", output, "B");
 	ret.ok = true;
 	return ret;
 }
