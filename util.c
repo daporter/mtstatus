@@ -43,7 +43,7 @@ static int util_fmt_human(char *buf, size_t len, uintmax_t num, int base)
 	for (i = 0; i < prefixlen && scaled >= base; i++)
 		scaled /= base;
 
-	return snprintf(buf, len, "%.3g %s", scaled, prefix[i]);
+	return snprintf(buf, len, "%4.3g %s", scaled, prefix[i]);
 }
 
 static int util_run_cmd(char *buf, const size_t bufsize, char *const argv[])

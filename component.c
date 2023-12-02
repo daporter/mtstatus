@@ -137,7 +137,7 @@ static comp_ret_t comp_net_traffic(char *buf, const size_t bufsize,
 	char rx_buf[BUF_SIZE], tx_buf[BUF_SIZE];
 	util_fmt_human(rx_buf, sizeof(rx_buf), rx, K_IEC);
 	util_fmt_human(tx_buf, sizeof(tx_buf), tx, K_IEC);
-	snprintf(buf, bufsize, "▾%s%s ▴%s%s", rx_buf, "B", tx_buf, "B");
+	snprintf(buf, bufsize, "%7s%s▾ %7s%s▴", rx_buf, "B", tx_buf, "B");
 
 	return (comp_ret_t){ .ok = true };
 }
