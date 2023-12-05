@@ -14,7 +14,7 @@ debug: mtstatus
 release: CFLAGS += -DNDEBUG -O2
 release: mtstatus
 
-mtstatus: mtstatus.c component.c util.c util.h
+mtstatus: mtstatus.c mtstatus.h component.c util.c util.h
 	$(CC) $(CFLAGS) -o $@ $< $(LDLIBS)
 
 clean:

@@ -1,8 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "mtstatus.h"
-#include "component.c"
 #include "util.c"
+#include "component.c"
 
 #include <libgen.h>
 

@@ -125,7 +125,7 @@ void comp_net_traffic(char *buf, const size_t bufsize, const char *iface)
 	}
 
 	n = snprintf(path, sizeof(path),
-			 "/sys/class/net/%s/statistics/tx_bytes", iface);
+		     "/sys/class/net/%s/statistics/tx_bytes", iface);
 	if (n < 0) {
 		log_err("Error creating tx_bytes filepath for '%s'\n", iface);
 		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
