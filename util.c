@@ -1,4 +1,5 @@
 #include "util.h"
+#include "mtstatus.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -71,7 +72,7 @@ static bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 	int r = pipe(pipefd);
 	if (r == -1) {
 		strerror_r(errno, errstr, sizeof(errstr));
-		(void)fprintf(stderr, "Error creating pipe: %s\n", errstr);
+		log_err("Error creating pipe: %s\n", errstr);
 		return false;
 	}
 
@@ -81,7 +82,7 @@ static bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 	switch (pid) {
 	case -1:
 		strerror_r(errno, errstr, sizeof(errstr));
-		(void)fprintf(stderr, "Error: unable to fork: %s\n", errstr);
+		log_err("Error: unable to fork: %s\n", errstr);
 		return false;
 	case 0:
 		s = dup2(pipefd[1], 1);
@@ -97,15 +98,13 @@ static bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 		char argv_s[64];
 		argv_str(argv_s, 64, argv);
 		if (!WIFEXITED(status)) {
-			(void)fprintf(stderr,
-				      "Error: command terminated abnormally: '%s'\n",
-				      argv_s);
+			log_err("Error: command terminated abnormally: '%s'\n",
+				argv_s);
 			return false;
 		}
 		if (WEXITSTATUS(status)) {
-			(void)fprintf(stderr,
-				      "Error: command exited with status %d: '%s'\n",
-				      status, argv_s);
+			log_err("Error: command exited with status %d: '%s'\n",
+				status, argv_s);
 			return false;
 		}
 		close(pipefd[0]);

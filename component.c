@@ -9,6 +9,7 @@
 #include <linux/wireless.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,8 +20,21 @@
 
 #define BUF_SIZE 128
 
+typedef bool (*parser_t)(char *, const size_t, char *, const size_t,
+			 const char *);
+
 pthread_mutex_t cpu_data_mtx    = PTHREAD_MUTEX_INITIALIZER,
 		net_traffic_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+static void render_component(char *buf, const size_t bufsize,
+			     const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	int n = vsnprintf(buf, bufsize, fmt, ap);
+	va_end(ap);
+	assert(n >= 0 && (size_t)n < bufsize);
+}
 
 static void comp_keyb_ind(char *buf, const size_t bufsize, const char *args)
 {
@@ -54,14 +68,14 @@ void comp_notmuch(char *buf, const size_t bufsize, const char *args)
 	char cmdbuf[BUF_SIZE] = { 0 };
 	bool s = util_run_cmd(cmdbuf, sizeof(cmdbuf), argv);
 	if (!s) {
-		fputs("Unable to run 'notmuch'\n", stderr);
-		snprintf(buf, bufsize, " %s", ERR_STR);
+		log_err("Unable to run 'notmuch'\n", stderr);
+		render_component(buf, bufsize, " %s", ERR_STR);
 		return;
 	}
 	errno = 0;
 	long count = strtol(cmdbuf, NULL, 0);
 	assert(!errno);
-	snprintf(buf, bufsize, "%s %ld", (count ? "" : ""), count);
+	render_component(buf, bufsize, "%s %ld", (count ? "" : ""), count);
 }
 
 bool parse_net_stats(char *buf, const size_t bufsize, uint64_t *val, char *path)
@@ -70,13 +84,13 @@ bool parse_net_stats(char *buf, const size_t bufsize, uint64_t *val, char *path)
 	if (!f) {
 		char errstr[64];
 		strerror_r(errno, errstr, sizeof(errstr));
-		fprintf(stderr, "Error: unable to open '%s': %s", path, errstr);
+		log_err("Error: unable to open '%s': %s\n", path, errstr);
 		return false;
 	}
 	int n = fscanf(f, "%lu", val);
-	fclose(f);
+	(void)fclose(f);
 	if (n != 1) {
-		fprintf(stderr, "Error: unable to parse '%s'", path);
+		log_err("Error: unable to parse '%s'\n", path);
 		return false;
 	}
 	return true;
@@ -85,25 +99,51 @@ bool parse_net_stats(char *buf, const size_t bufsize, uint64_t *val, char *path)
 void comp_net_traffic(char *buf, const size_t bufsize, const char *iface)
 {
 	char path[PATH_MAX];
-	snprintf(path, sizeof(path),
+
+	// TODO(david): Remove the duplication here.
+
+	int n = snprintf(path, sizeof(path),
 		 "/sys/class/net/%s/statistics/rx_bytes", iface);
-	uint64_t rx_cur, tx_cur;
-	bool s = parse_net_stats(buf, bufsize, &rx_cur, path);
-	if (!s) {
-		fputs("Unable to parse network rx bytes\n", stderr);
-		snprintf(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
+	if (n < 0) {
+		log_err("Error creating rx_bytes filepath for '%s'\n", iface);
+		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
+		return;
+	}
+	if ((size_t)n >= sizeof(path)) {
+		log_err("Error: rx_bytes filepath for '%s' too big\n", iface);
+		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
 		return;
 	}
 
-	snprintf(path, sizeof(path),
-		 "/sys/class/net/%s/statistics/tx_bytes", iface);
-	s = parse_net_stats(buf, bufsize, &tx_cur, path);
+	uint64_t rx_cur, tx_cur;
+
+	bool s = parse_net_stats(buf, bufsize, &rx_cur, path);
 	if (!s) {
-		fputs("Unable to parse network tx bytes\n", stderr);
-		snprintf(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
+		log_err("Unable to parse network rx bytes\n");
+		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
 		return;
 	}
-	
+
+	n = snprintf(path, sizeof(path),
+			 "/sys/class/net/%s/statistics/tx_bytes", iface);
+	if (n < 0) {
+		log_err("Error creating tx_bytes filepath for '%s'\n", iface);
+		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
+		return;
+	}
+	if ((size_t)n >= sizeof(path)) {
+		log_err("Error: tx_bytes filepath for '%s' too big\n", iface);
+		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
+		return;
+	}
+
+	s = parse_net_stats(buf, bufsize, &tx_cur, path);
+	if (!s) {
+		log_err("Unable to parse network tx bytes\n");
+		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
+		return;
+	}
+
 	static uint64_t rx_prev, tx_prev;
 
 	pthread_mutex_lock(&net_traffic_mtx);
@@ -116,7 +156,7 @@ void comp_net_traffic(char *buf, const size_t bufsize, const char *iface)
 	char rx_buf[BUF_SIZE], tx_buf[BUF_SIZE];
 	util_fmt_human(rx_buf, sizeof(rx_buf), rx, K_IEC);
 	util_fmt_human(tx_buf, sizeof(tx_buf), tx, K_IEC);
-	snprintf(buf, bufsize, "%7s%s▾ %7s%s▴", rx_buf, "B", tx_buf, "B");
+	render_component(buf, bufsize, "%7s%s▾ %7s%s▴", rx_buf, "B", tx_buf, "B");
 }
 
 void comp_cpu(char *buf, const size_t bufsize, const char *args)
@@ -126,8 +166,8 @@ void comp_cpu(char *buf, const size_t bufsize, const char *args)
 	if (!fp) {
 		char errstr[64];
 		strerror_r(errno, errstr, sizeof(errstr));
-		fprintf(stderr, "Error: unable to open '%s': %s\n", file, errstr);
-		snprintf(buf, bufsize, " %s", ERR_STR);
+		log_err("Error: unable to open '%s': %s\n", file, errstr);
+		render_component(buf, bufsize, " %s", ERR_STR);
 		return;
 	}
 
@@ -135,10 +175,10 @@ void comp_cpu(char *buf, const size_t bufsize, const char *args)
 	int n = fscanf(fp,
 		       "cpu  %lu %lu %lu %lu %lu %lu %lu",
 		       &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6]);
-	fclose(fp);
+	(void)fclose(fp);
 	if (n != LEN(t)) {
-		fprintf(stderr, "Error parsing '%s'\n", file);
-		snprintf(buf, bufsize, " %s", ERR_STR);
+		log_err("Error parsing '%s'\n", file);
+		render_component(buf, bufsize, " %s", ERR_STR);
 		return;
 	}
 
@@ -155,24 +195,27 @@ void comp_cpu(char *buf, const size_t bufsize, const char *args)
 	pthread_mutex_unlock(&cpu_data_mtx);
 
 	uint64_t usage = 100 * (total - idle) / total;
-	snprintf(buf, bufsize, " %ld%%", usage);
+	render_component(buf, bufsize, " %ld%%", usage);
 }
 
-bool parse_val(char *data, size_t datasz, const char *target, unsigned nfield,
+bool parse_val(char *data, size_t datasz,
+	       const char *target, unsigned nfield,
 	       long *result)
 {
 	data[datasz - 1] = '\0';
 
 	char *s = strstr(data, target);
-	if (s == NULL)
+	if (!s) {
 		return false;
+	}
 	unsigned i;
 	char *token = NULL;
 	char *p, *saveptr;
 	for (i = 0, p = s; i < nfield; i++, p = NULL) {
 		token = strtok_r(p, " ", &saveptr);
-		if (!token)
+		if (!token) {
 			return false;
+		}
 	}
 	assert(token);
 	errno = 0;
@@ -180,7 +223,7 @@ bool parse_val(char *data, size_t datasz, const char *target, unsigned nfield,
 	if (errno) {
 		char errstr[64];
 		strerror_r(errno, errstr, sizeof(errstr));
-		fprintf(stderr, "Error converting '%s': %s\n", token, errstr);
+		log_err("Error converting '%s': %s\n", token, errstr);
 		return false;
 	}
 	return true;
@@ -193,7 +236,7 @@ bool parse_meminfo(char *out, const size_t outsize,
 	long val;
 	bool s = parse_val(data, datasz, target, 2, &val);
 	if (!s) {
-		fputs("Unable to parse available memory\n", stderr);
+		log_err("Unable to parse available memory\n");
 		return false;
 	}
 	util_fmt_human(out, outsize, val * K_IEC, K_IEC);
@@ -207,18 +250,17 @@ bool parse_wireless(char *out, const size_t outsize,
 	long val;
 	bool s = parse_val(data, datasz, target, 3, &val);
 	if (!s) {
-		fputs("Unable to parse wifi strength\n", stderr);
+		log_err("Unable to parse wifi strength\n");
 		return false;
 	}
 
 	/* 70 is the max of /proc/net/wireless */
-	snprintf(out, outsize, "%ld", (val * 100 / 70));
+	render_component(out, outsize, "%ld", (val * 100 / 70));
 	return true;
 }
 
-bool parse_file(char *buf, const size_t bufsize, char *file, const char *target,
-		bool (*parse)(char *, const size_t, char *, const size_t,
-			      const char *))
+bool parse_file(char *buf, const size_t bufsize,
+		char *file, const char *target, parser_t parse)
 {
 	bool ret = false;
 
@@ -226,8 +268,7 @@ bool parse_file(char *buf, const size_t bufsize, char *file, const char *target,
 	if (!f) {
 		char errstr[64];
 		strerror_r(errno, errstr, sizeof(errstr));
-		fprintf(stderr, "Error: unable to open '%s': %s\n", file,
-			errstr);
+		log_err("Error: unable to open '%s': %s\n", file, errstr);
 		goto out;
 	}
 	char *data = NULL;
@@ -237,7 +278,7 @@ bool parse_file(char *buf, const size_t bufsize, char *file, const char *target,
 	if (nread == -1) {
 		char errstr[64];
 		strerror_r(errno, errstr, sizeof(errstr));
-		(void)fprintf(stderr, "Error reading '%s': %s\n", file, errstr);
+		log_err("Error reading '%s': %s\n", file, errstr);
 		goto cleanup;
 	}
 	bool s = parse(buf, bufsize, data, nread, target);
@@ -248,23 +289,22 @@ bool parse_file(char *buf, const size_t bufsize, char *file, const char *target,
 
 cleanup:
 	free(data);
-	fclose(f);
+	(void)fclose(f);
 out:
 	return ret;
 }
 
-void comp_mem_avail(char *buf, const size_t bufsize,
-				 const char *args)
+void comp_mem_avail(char *buf, const size_t bufsize, const char *args)
 {
 	char value[BUF_SIZE];
 	bool s = parse_file(value, sizeof(value),
 			    "/proc/meminfo", "MemAvailable", parse_meminfo);
 	if (!s) {
-		fputs("Unable to determine available memory\n", stderr);
-		snprintf(buf, bufsize, " %s", ERR_STR);
+		log_err("Unable to determine available memory\n");
+		render_component(buf, bufsize, " %s", ERR_STR);
 		return;
 	}
-	snprintf(buf, bufsize, " %s%s", value, "B");
+	render_component(buf, bufsize, " %s%s", value, "B");
 }
 
 bool wifi_essid(char *buf, const char *iface)
@@ -283,13 +323,13 @@ bool wifi_essid(char *buf, const char *iface)
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1) {
 		strerror_r(errno, errstr, sizeof(errstr));
-		(void)fprintf(stderr, "Error creating socket: %s\n", errstr);
+		log_err("Error creating socket: %s\n", errstr);
 		goto out;
 	}
 	iwreq.u.essid.pointer = buf;
 	if (ioctl(sockfd, SIOCGIWESSID, &iwreq) == -1) {
 		strerror_r(errno, errstr, sizeof(errstr));
-		(void)fprintf(stderr, "Error reading socket: %s\n", errstr);
+		log_err("Error reading socket: %s\n", errstr);
 		goto cleanup;
 	}
 	ret = true;
@@ -309,11 +349,11 @@ void comp_wifi(char *buf, const size_t bufsize, const char *device)
 	bool s = parse_file(value, sizeof(value),
 			    "/proc/net/wireless", device, parse_wireless);
 	if (!s) {
-		fputs("Unable to determine wifi strength\n", stderr);
-		snprintf(buf, bufsize, " %s", ERR_STR);
+		log_err("Unable to determine wifi strength\n");
+		render_component(buf, bufsize, " %s", ERR_STR);
 		return;
 	}
-	snprintf(buf, bufsize, " %s%% %s", value, essid);
+	render_component(buf, bufsize, " %s%% %s", value, essid);
 }
 
 void comp_disk_free(char *buf, const size_t bufsize, const char *path)
@@ -323,34 +363,33 @@ void comp_disk_free(char *buf, const size_t bufsize, const char *path)
 	if (r == -1) {
 		char errstr[64];
 		strerror_r(errno, errstr, sizeof(errstr));
-		(void)fprintf(stderr, "Error: statvfs: %s\n", errstr);
-		fputs("Unable to determine disk free space\n", stderr);
-		snprintf(buf, bufsize, "󰋊 %s", ERR_STR);
+		log_err("Error: statvfs: %s\n", errstr);
+		log_err("Unable to determine disk free space\n");
+		render_component(buf, bufsize, "󰋊 %s", ERR_STR);
 		return;
 	}
 	char output[bufsize];
 	util_fmt_human(output, sizeof(output),
 		       fs.f_frsize * fs.f_bavail, K_IEC);
-	snprintf(buf, bufsize, "󰋊 %s%s", output, "B");
+	render_component(buf, bufsize, "󰋊 %sB", output);
 }
 
 void comp_volume(char *buf, const size_t bufsize, const char *path)
 {
 	char *const argv[] = { "pamixer", "--get-volume-human", NULL };
-	
+
 	char cmdbuf[BUF_SIZE] = { 0 };
 	bool s = util_run_cmd(cmdbuf, sizeof(cmdbuf), argv);
 	if (!s) {
-		fputs("Unable to determine volume\n", stderr);
-		snprintf(buf, bufsize, "%s %s", "󰝟", ERR_STR);
+		log_err("Unable to determine volume\n");
+		render_component(buf, bufsize, "󰝟 %s", ERR_STR);
 		return;
 	}
-	snprintf(buf, bufsize, "%s %s", "󰕾", cmdbuf);
+	render_component(buf, bufsize, "󰕾 %s", cmdbuf);
 }
 
 void comp_datetime(char *buf, const size_t bufsize, const char *date_fmt)
 {
-	char icon[] = "";
 	time_t t = time(NULL);
 	assert(t != -1);
 	struct tm now;
@@ -359,5 +398,5 @@ void comp_datetime(char *buf, const size_t bufsize, const char *date_fmt)
 	char output[bufsize];
 	size_t ret_s = strftime(output, sizeof(output), date_fmt, &now);
 	assert(ret_s);
-	snprintf(buf, bufsize, "%s %s", icon, output);
+	render_component(buf, bufsize, "  %s", output);
 }

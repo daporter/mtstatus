@@ -9,4 +9,6 @@
 
 static Display *dpy;
 
+static void log_err(const char *fmt, ...);
+
 #endif

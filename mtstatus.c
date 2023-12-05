@@ -69,13 +69,19 @@ static const sbar_comp_defn_t component_defns[] = {
 static char pidfile[MAXLEN];
 static bool to_stdout = false;
 
+static void log_err(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	(void)vfprintf(stderr, fmt, ap);
+	va_end(ap);
+}
+
 static void fatal(int code)
 {
-	fprintf(stderr, "mtstatus: fatal: %s\n", strerror(code));
-	if (!to_stdout) {
-		if (remove(pidfile) < 0) {
-			fprintf(stderr, "Unable to remove %s", pidfile);
-		}
+	log_err("mtstatus: fatal: %s\n", strerror(code));
+	if (!to_stdout && remove(pidfile) < 0) {
+		log_err("Unable to remove %s", pidfile);
 	}
 	exit(EXIT_FAILURE);
 }
@@ -325,9 +331,9 @@ static void sbar_start(sbar_t *sbar)
 static void usage(FILE *f)
 {
 	assert(f != NULL);
-	fputs("Usage: mtstatus [-h] [-s]\n", f);
-	fputs("  -h        Print this help message and exit\n", f);
-	fputs("  -s        Output to stdout\n", f);
+	(void)fputs("Usage: mtstatus [-h] [-s]\n", f);
+	(void)fputs("  -h        Print this help message and exit\n", f);
+	(void)fputs("  -s        Output to stdout\n", f);
 }
 
 int main(int argc, char *argv[])
@@ -352,8 +358,9 @@ int main(int argc, char *argv[])
 	if (!to_stdout) {
 		/* Save the pid to a file so it’s available to shell commands */
 		FILE *f;
-		snprintf(pidfile, sizeof(pidfile), "/tmp/%s.pid",
-			 basename(argv[0]));
+		int n = snprintf(pidfile, sizeof(pidfile), "/tmp/%s.pid",
+				 basename(argv[0]));
+		assert(n >= 0 && (size_t)n < sizeof(pidfile));
 		f = fopen(pidfile, "w");
 		if (f == NULL) {
 			fatal(errno);
@@ -361,7 +368,7 @@ int main(int argc, char *argv[])
 		if (fprintf(f, "%ld", (long)getpid()) < 0) {
 			fatal(errno);
 		}
-		fclose(f);
+		(void)fclose(f);
 
 		dpy = XOpenDisplay(NULL);
 		if (dpy == NULL) {
@@ -409,7 +416,7 @@ int main(int argc, char *argv[])
 		XCloseDisplay(dpy);
 
 		if (remove(pidfile) < 0) {
-			fprintf(stderr, "Unable to remove %s", pidfile);
+			log_err("Unable to remove %s", pidfile);
 		}
 	}
 }
