@@ -1,10 +1,12 @@
 #include "util.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -46,40 +48,68 @@ static int util_fmt_human(char *buf, size_t len, uintmax_t num, int base)
 	return snprintf(buf, len, "%4.3g %s", scaled, prefix[i]);
 }
 
-static int util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
+static void argv_str(char *buf, const size_t bufsize, char *const argv[])
 {
-	int pipefd[2];
-	pid_t pid;
-	int status;
-	ssize_t nread;
+	char *p = buf;
+	char *end = buf + bufsize;
+	if (argv[0]) {
+		p = util_cat(p, end, argv[0]);
+		for (int i = 1; argv[i] && p < end; ++i) {
+			p = util_cat(p, end, " ");
+			p = util_cat(p, end, argv[i]);
+		}
+	}
+	*p = '\0';
+}
 
+static bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
+{
 	assert(argv[0] && "argv[0] must not be NULL");
 
-	if (pipe(pipefd) == -1) {
-		/* TODO: return a more informative value? */
-		return EXIT_FAILURE;
+	char errstr[64];
+	int pipefd[2];
+	int r = pipe(pipefd);
+	if (r == -1) {
+		strerror_r(errno, errstr, sizeof(errstr));
+		(void)fprintf(stderr, "Error creating pipe: %s\n", errstr);
+		return false;
 	}
 
-	pid = fork();
+	ssize_t nread;
+	int s, status;
+	pid_t pid = fork();
 	switch (pid) {
 	case -1:
-		/* TODO: return a more informative value? */
-		return EXIT_FAILURE;
+		strerror_r(errno, errstr, sizeof(errstr));
+		(void)fprintf(stderr, "Error: unable to fork: %s\n", errstr);
+		return false;
 	case 0:
-		status = dup2(pipefd[1], 1);
-		assert(status != -1 && "dup2 used incorrectly");
+		s = dup2(pipefd[1], 1);
+		assert(s != -1);
 		execvp(argv[0], argv);
 		_exit(EXIT_FAILURE); /* Failed exec */
 	default:
 		nread = read(pipefd[0], buf, bufsize);
-		assert(nread != -1 && "read used incorrectly");
+		assert(nread != -1);
 		buf[nread - 1] = '\0'; /* Remove trailing newline */
-		if (waitpid(pid, &status, 0) == -1) {
-			/* TODO: return a more informative value? */
-			return EXIT_FAILURE;
+		s = waitpid(pid, &status, 0);
+		assert(s != -1);
+		char argv_s[64];
+		argv_str(argv_s, 64, argv);
+		if (!WIFEXITED(status)) {
+			(void)fprintf(stderr,
+				      "Error: command terminated abnormally: '%s'\n",
+				      argv_s);
+			return false;
+		}
+		if (WEXITSTATUS(status)) {
+			(void)fprintf(stderr,
+				      "Error: command exited with status %d: '%s'\n",
+				      status, argv_s);
+			return false;
 		}
 		close(pipefd[0]);
 		close(pipefd[1]);
 	}
-	return EXIT_SUCCESS;
+	return true;
 }

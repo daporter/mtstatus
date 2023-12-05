@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -8,4 +9,4 @@
 
 static char *util_cat(char *dest, const char *end, const char *str);
 static int   util_fmt_human(char *buf, size_t len, uintmax_t num, int base);
-static int   util_run_cmd(char *buf, size_t bufsize, char *const argv[]);
+static bool  util_run_cmd(char *buf, size_t bufsize, char *const argv[]);

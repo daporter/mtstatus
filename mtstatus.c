@@ -13,8 +13,8 @@
 /*
  * Function that returns an updated value for a status bar component.
  */
-typedef comp_ret_t (*sbar_updater_t)(char *buf, const size_t bufsize,
-				     const char *args);
+typedef void (*sbar_updater_t)(char *buf, const size_t bufsize,
+			       const char *args);
 
 typedef struct sbar_comp_defn sbar_comp_defn_t;
 
@@ -120,18 +120,13 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 static void sbar_comp_update(const sbar_comp_t *c)
 {
 	char tmpbuf[MAXLEN];
-	int r;
-	comp_ret_t ret;
 
-	ret = c->update(tmpbuf, sizeof(tmpbuf), c->args);
-	if (!ret.ok) {
-		fprintf(stderr, "Error updating component: %s\n", ret.message);
-	}
+	c->update(tmpbuf, sizeof(tmpbuf), c->args);
 
 	/*
 	 * Maintain the status bar "dirty" invariant.
 	 */
-	r = pthread_mutex_lock(&c->sbar->mutex);
+	int r = pthread_mutex_lock(&c->sbar->mutex);
 	assert(r == 0);
 	static_assert(MAXLEN >= sizeof(tmpbuf),
 		      "size of component buffer < sizeof(tmpbuf)");
@@ -175,6 +170,7 @@ static void *thread_repeating(void *arg)
 		sleep((unsigned)c->interval);
 		sbar_comp_update(c);
 	}
+
 	return NULL;
 }
 
@@ -217,7 +213,7 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	sigset_t sigset;
 	int r;
 
-	sbar->comp_bufs = calloc(ncomponents * (size_t)MAXLEN, sizeof(char));
+	sbar->comp_bufs = calloc(ncomponents * (size_t)MAXLEN, 1);
 	if (sbar->comp_bufs == NULL) {
 		fatal(errno);
 	}
@@ -229,6 +225,7 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	sbar->dirty = false;
 	r = pthread_mutex_init(&sbar->mutex, NULL);
 	if (r != 0) {
+		// TODO(david): Should these be asserts?
 		fatal(r);
 	}
 	r = pthread_cond_init(&sbar->dirty_cond, NULL);
@@ -266,6 +263,7 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 			 */
 			cp->signum += SIGRTMIN;
 			if (sigaddset(&sigset, cp->signum) < 0) {
+				// TODO(david): Should this be an assert?
 				fatal(errno);
 			}
 		}

@@ -19,17 +19,10 @@
 
 #define BUF_SIZE 128
 
-typedef struct comp_ret comp_ret_t;
-struct comp_ret {
-	bool ok;
-	char message[BUF_SIZE];
-};
-
 pthread_mutex_t cpu_data_mtx    = PTHREAD_MUTEX_INITIALIZER,
 		net_traffic_mtx = PTHREAD_MUTEX_INITIALIZER;
 
-static comp_ret_t comp_keyb_ind(char *buf, const size_t bufsize,
-				const char *args)
+static void comp_keyb_ind(char *buf, const size_t bufsize, const char *args)
 {
 	if (dpy) {
 		XKeyboardState state;
@@ -50,81 +43,67 @@ static comp_ret_t comp_keyb_ind(char *buf, const size_t bufsize,
 		assert(bufsize >= len + 1);
 		memcpy(buf, val, len + 1);
 	}
-	return (comp_ret_t){ .ok = true };
 }
 
-static comp_ret_t comp_notmuch(char *buf, const size_t bufsize,
-			       const char *args)
+void comp_notmuch(char *buf, const size_t bufsize, const char *args)
 {
 	char *const argv[]= { "notmuch",
 			       "count",
 			       "tag:unread NOT tag:archived",
 			       NULL };
 	char cmdbuf[BUF_SIZE] = { 0 };
-	if (util_run_cmd(cmdbuf, sizeof(cmdbuf), argv) != 0) {
-		snprintf(buf, bufsize, " %s", NO_VAL_STR);
-		return (comp_ret_t){ false, "Error running notmuch" };
+	bool s = util_run_cmd(cmdbuf, sizeof(cmdbuf), argv);
+	if (!s) {
+		fputs("Unable to run 'notmuch'\n", stderr);
+		snprintf(buf, bufsize, " %s", ERR_STR);
+		return;
 	}
-	errno = 0;		/* To distinguish success/failure after call */
+	errno = 0;
 	long count = strtol(cmdbuf, NULL, 0);
 	assert(!errno);
-
 	snprintf(buf, bufsize, "%s %ld", (count ? "" : ""), count);
-
-	return (comp_ret_t){ .ok = true };
 }
 
-static comp_ret_t ret_err(char *buf, const size_t bufsize, const char* icon,
-			  const char *fmt, const int errnum)
+bool parse_net_stats(char *buf, const size_t bufsize, uint64_t *val, char *path)
 {
-	char errbuf[BUF_SIZE];
-	strerror_r(errnum, errbuf, sizeof(errbuf));
-
-	snprintf(buf, bufsize, "%s %s", icon, NO_VAL_STR);
-
-	comp_ret_t ret;
-	ret.ok = false;
-	snprintf(ret.message, sizeof(ret.message), fmt, errbuf);
-	return ret;
-}
-
-comp_ret_t parse_net_stats(char *buf, const size_t bufsize,
-			   uint64_t *val, char *path)
-{
-	comp_ret_t ret;
-
 	FILE *f = fopen(path, "r");
 	if (!f) {
-		snprintf(buf, bufsize, "▾%s ▴%s", NO_VAL_STR, NO_VAL_STR);
-		ret.ok = false;
-		snprintf(ret.message, sizeof(ret.message), "Unable to open %s", path);
-		return ret;
+		char errstr[64];
+		strerror_r(errno, errstr, sizeof(errstr));
+		fprintf(stderr, "Error: unable to open '%s': %s", path, errstr);
+		return false;
 	}
 	int n = fscanf(f, "%lu", val);
 	fclose(f);
 	if (n != 1) {
-		snprintf(buf, bufsize, "▾%s ▴%s", NO_VAL_STR, NO_VAL_STR);
-		ret.ok = false;
-		snprintf(ret.message, sizeof(ret.message), "Unable to parse %s", path);
-		return ret;
+		fprintf(stderr, "Error: unable to parse '%s'", path);
+		return false;
 	}
-	ret.ok = true;
-	return ret;
+	return true;
 }
 
-static comp_ret_t comp_net_traffic(char *buf, const size_t bufsize,
-				   const char *iface)
+void comp_net_traffic(char *buf, const size_t bufsize, const char *iface)
 {
 	char path[PATH_MAX];
 	snprintf(path, sizeof(path),
 		 "/sys/class/net/%s/statistics/rx_bytes", iface);
 	uint64_t rx_cur, tx_cur;
-	parse_net_stats(buf, bufsize, &rx_cur, path);
+	bool s = parse_net_stats(buf, bufsize, &rx_cur, path);
+	if (!s) {
+		fputs("Unable to parse network rx bytes\n", stderr);
+		snprintf(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
+		return;
+	}
 
 	snprintf(path, sizeof(path),
 		 "/sys/class/net/%s/statistics/tx_bytes", iface);
-	parse_net_stats(buf, bufsize, &tx_cur, path);
-
+	s = parse_net_stats(buf, bufsize, &tx_cur, path);
+	if (!s) {
+		fputs("Unable to parse network tx bytes\n", stderr);
+		snprintf(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
+		return;
+	}
+	
 	static uint64_t rx_prev, tx_prev;
 
 	pthread_mutex_lock(&net_traffic_mtx);
@@ -138,16 +117,18 @@ static comp_ret_t comp_net_traffic(char *buf, const size_t bufsize,
 	util_fmt_human(rx_buf, sizeof(rx_buf), rx, K_IEC);
 	util_fmt_human(tx_buf, sizeof(tx_buf), tx, K_IEC);
 	snprintf(buf, bufsize, "%7s%s▾ %7s%s▴", rx_buf, "B", tx_buf, "B");
-
-	return (comp_ret_t){ .ok = true };
 }
 
-static comp_ret_t comp_cpu(char *buf, const size_t bufsize, const char *args)
+void comp_cpu(char *buf, const size_t bufsize, const char *args)
 {
-	FILE *fp = fopen("/proc/stat", "r");
+	char file[] = "/proc/stat";
+	FILE *fp = fopen(file, "r");
 	if (!fp) {
-		snprintf(buf, bufsize, " %s", NO_VAL_STR);
-		return (comp_ret_t){ false, "Error opening /proc/stat" };
+		char errstr[64];
+		strerror_r(errno, errstr, sizeof(errstr));
+		fprintf(stderr, "Error: unable to open '%s': %s\n", file, errstr);
+		snprintf(buf, bufsize, " %s", ERR_STR);
+		return;
 	}
 
 	uint64_t t[7];
@@ -156,8 +137,9 @@ static comp_ret_t comp_cpu(char *buf, const size_t bufsize, const char *args)
 		       &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6]);
 	fclose(fp);
 	if (n != LEN(t)) {
-		snprintf(buf, bufsize, " %s", NO_VAL_STR);
-		return (comp_ret_t){ false, "Error reading /proc/stat" };
+		fprintf(stderr, "Error parsing '%s'\n", file);
+		snprintf(buf, bufsize, " %s", ERR_STR);
+		return;
 	}
 
 	static uint64_t total_prev, idle_prev;
@@ -174,85 +156,122 @@ static comp_ret_t comp_cpu(char *buf, const size_t bufsize, const char *args)
 
 	uint64_t usage = 100 * (total - idle) / total;
 	snprintf(buf, bufsize, " %ld%%", usage);
-
-	return (comp_ret_t){ .ok = true };
 }
 
-long parse_val(char *data, size_t datasz, const char *target, unsigned nfield)
+bool parse_val(char *data, size_t datasz, const char *target, unsigned nfield,
+	       long *result)
 {
 	data[datasz - 1] = '\0';
 
 	char *s = strstr(data, target);
-	if (s == NULL) return -1;
+	if (s == NULL)
+		return false;
 	unsigned i;
 	char *token = NULL;
 	char *p, *saveptr;
-	for (i = 0, p = s;
-	     i < nfield;
-	     i++, p = NULL) {
+	for (i = 0, p = s; i < nfield; i++, p = NULL) {
 		token = strtok_r(p, " ", &saveptr);
-		if (!token) return -1;
+		if (!token)
+			return false;
 	}
 	assert(token);
-	return strtol(token, NULL, 0);
+	errno = 0;
+	*result = strtol(token, NULL, 0);
+	if (errno) {
+		char errstr[64];
+		strerror_r(errno, errstr, sizeof(errstr));
+		fprintf(stderr, "Error converting '%s': %s\n", token, errstr);
+		return false;
+	}
+	return true;
 }
 
-static comp_ret_t parse_meminfo(char *out, const size_t outsize,
-				char *data, const size_t datasz,
-				const char *target)
+bool parse_meminfo(char *out, const size_t outsize,
+		   char *data, const size_t datasz,
+		   const char *target)
 {
-	long val = parse_val(data, datasz, target, 2);
-	if (val < 0) {
-		return (comp_ret_t){ false, "Unable to parse meminfo" };
+	long val;
+	bool s = parse_val(data, datasz, target, 2, &val);
+	if (!s) {
+		fputs("Unable to parse available memory\n", stderr);
+		return false;
 	}
 	util_fmt_human(out, outsize, val * K_IEC, K_IEC);
-	return (comp_ret_t){ .ok = true };
+	return true;
 }
 
-comp_ret_t parse_file(char *buf, const size_t bufsize,
-		      char *file, const char *target,
-		      comp_ret_t (*parse)(char *, const size_t,
-					  char *, const size_t,
-					  const char *))
+bool parse_wireless(char *out, const size_t outsize,
+		    char *data, const size_t datasz,
+		    const char *target)
 {
+	long val;
+	bool s = parse_val(data, datasz, target, 3, &val);
+	if (!s) {
+		fputs("Unable to parse wifi strength\n", stderr);
+		return false;
+	}
+
+	/* 70 is the max of /proc/net/wireless */
+	snprintf(out, outsize, "%ld", (val * 100 / 70));
+	return true;
+}
+
+bool parse_file(char *buf, const size_t bufsize, char *file, const char *target,
+		bool (*parse)(char *, const size_t, char *, const size_t,
+			      const char *))
+{
+	bool ret = false;
+
 	FILE *f = fopen(file, "r");
 	if (!f) {
-		return (comp_ret_t){ false, "Error opening /proc/meminfo" };
+		char errstr[64];
+		strerror_r(errno, errstr, sizeof(errstr));
+		fprintf(stderr, "Error: unable to open '%s': %s\n", file,
+			errstr);
+		goto out;
 	}
-	char	*data = NULL;
-	size_t	 len;
-	ssize_t	 nread = getdelim(&data, &len, '\0', f);
+	char *data = NULL;
+	size_t len;
+	errno = 0;
+	ssize_t nread = getdelim(&data, &len, '\0', f);
 	if (nread == -1) {
-		free(data);
-		fclose(f);
-		return (comp_ret_t){ false, "Error reading /proc/meminfo" };
+		char errstr[64];
+		strerror_r(errno, errstr, sizeof(errstr));
+		(void)fprintf(stderr, "Error reading '%s': %s\n", file, errstr);
+		goto cleanup;
 	}
-	comp_ret_t ret = parse(buf, bufsize, data, nread, target);
+	bool s = parse(buf, bufsize, data, nread, target);
+	if (!s) {
+		goto cleanup;
+	}
+	ret = true;
+
+cleanup:
 	free(data);
 	fclose(f);
-	if (!ret.ok) {
-		return ret;
-	}
-	return (comp_ret_t){ .ok = true };
+out:
+	return ret;
 }
 
-static comp_ret_t comp_mem_avail(char *buf, const size_t bufsize,
+void comp_mem_avail(char *buf, const size_t bufsize,
 				 const char *args)
 {
 	char value[BUF_SIZE];
-	comp_ret_t ret =
-		parse_file(value, sizeof(value),
-			   "/proc/meminfo", "MemAvailable", parse_meminfo);
-	if (!ret.ok) {
-		snprintf(buf, bufsize, " %s", NO_VAL_STR);
-		return ret;
+	bool s = parse_file(value, sizeof(value),
+			    "/proc/meminfo", "MemAvailable", parse_meminfo);
+	if (!s) {
+		fputs("Unable to determine available memory\n", stderr);
+		snprintf(buf, bufsize, " %s", ERR_STR);
+		return;
 	}
 	snprintf(buf, bufsize, " %s%s", value, "B");
-	return (comp_ret_t){ .ok = true };
 }
 
-static comp_ret_t wifi_essid(char *buf, const char *iface)
+bool wifi_essid(char *buf, const char *iface)
 {
+	char errstr[64];
+	bool ret = false;
+
 	assert(iface);
 	size_t len = strlen(iface);
 	assert(len < IFNAMSIZ);
@@ -262,101 +281,83 @@ static comp_ret_t wifi_essid(char *buf, const char *iface)
 	memcpy(iwreq.ifr_name, iface, len);
 
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sockfd < 0) {
-		return (comp_ret_t){ false, "Unable to create socket" };
+	if (sockfd == -1) {
+		strerror_r(errno, errstr, sizeof(errstr));
+		(void)fprintf(stderr, "Error creating socket: %s\n", errstr);
+		goto out;
 	}
 	iwreq.u.essid.pointer = buf;
-	if (ioctl(sockfd, SIOCGIWESSID, &iwreq) < 0) {
-		close(sockfd);
-		return (comp_ret_t){ false, "Unable to get ESSID" };
+	if (ioctl(sockfd, SIOCGIWESSID, &iwreq) == -1) {
+		strerror_r(errno, errstr, sizeof(errstr));
+		(void)fprintf(stderr, "Error reading socket: %s\n", errstr);
+		goto cleanup;
 	}
+	ret = true;
 
+cleanup:
 	close(sockfd);
-	return (comp_ret_t){ .ok = true };
+out:
+	return ret;
 }
 
-static comp_ret_t parse_wireless(char *out, const size_t outsize,
-				 char *data, const size_t datasz,
-				 const char *target)
-{
-	long val = parse_val(data, datasz, target, 3);
-	if (val < 0) {
-		return (comp_ret_t){ false, "Unable to parse wifi strength" };
-	}
-
-	/* 70 is the max of /proc/net/wireless */
-	snprintf(out, outsize, "%ld", (val * 100 / 70));
-	return (comp_ret_t){ .ok = true };
-}
-
-static comp_ret_t comp_wifi(char *buf, const size_t bufsize, const char *device)
+void comp_wifi(char *buf, const size_t bufsize, const char *device)
 {
 	char essid[IW_ESSID_MAX_SIZE + 1];
 	wifi_essid(essid, device);
 
 	char value[BUF_SIZE];
-	comp_ret_t ret =
-		parse_file(value, sizeof(value),
-			   "/proc/net/wireless", device, parse_wireless);
-	if (!ret.ok) {
-		snprintf(buf, bufsize, " %s", NO_VAL_STR);
-		return ret;
+	bool s = parse_file(value, sizeof(value),
+			    "/proc/net/wireless", device, parse_wireless);
+	if (!s) {
+		fputs("Unable to determine wifi strength\n", stderr);
+		snprintf(buf, bufsize, " %s", ERR_STR);
+		return;
 	}
 	snprintf(buf, bufsize, " %s%% %s", value, essid);
-	return (comp_ret_t){ .ok = true };
 }
 
-static comp_ret_t comp_disk_free(char *buf, const size_t bufsize,
-				 const char *path)
+void comp_disk_free(char *buf, const size_t bufsize, const char *path)
 {
-	comp_ret_t ret;
 	struct statvfs fs;
 	int r = statvfs(path, &fs);
-	if (r < 0) {
-		return ret_err(buf, bufsize, "󰋊", "statvfs: '%s': %s", r);
+	if (r == -1) {
+		char errstr[64];
+		strerror_r(errno, errstr, sizeof(errstr));
+		(void)fprintf(stderr, "Error: statvfs: %s\n", errstr);
+		fputs("Unable to determine disk free space\n", stderr);
+		snprintf(buf, bufsize, "󰋊 %s", ERR_STR);
+		return;
 	}
-
 	char output[bufsize];
-	util_fmt_human(output, sizeof(output), fs.f_frsize * fs.f_bavail,
-		       K_IEC);
+	util_fmt_human(output, sizeof(output),
+		       fs.f_frsize * fs.f_bavail, K_IEC);
 	snprintf(buf, bufsize, "󰋊 %s%s", output, "B");
-	ret.ok = true;
-	return ret;
 }
 
-static comp_ret_t comp_volume(char *buf, const size_t bufsize, const char *path)
+void comp_volume(char *buf, const size_t bufsize, const char *path)
 {
 	char *const argv[] = { "pamixer", "--get-volume-human", NULL };
+	
 	char cmdbuf[BUF_SIZE] = { 0 };
-	if (util_run_cmd(cmdbuf, sizeof(cmdbuf), argv) != 0) {
-		snprintf(buf, bufsize, "%s %s", "󰝟", NO_VAL_STR);
-		return (comp_ret_t){ false, "Error running pamixer" };
+	bool s = util_run_cmd(cmdbuf, sizeof(cmdbuf), argv);
+	if (!s) {
+		fputs("Unable to determine volume\n", stderr);
+		snprintf(buf, bufsize, "%s %s", "󰝟", ERR_STR);
+		return;
 	}
 	snprintf(buf, bufsize, "%s %s", "󰕾", cmdbuf);
-	return (comp_ret_t){ .ok = true };
 }
 
-static comp_ret_t comp_datetime(char *buf, const size_t bufsize,
-				const char *date_fmt)
+void comp_datetime(char *buf, const size_t bufsize, const char *date_fmt)
 {
 	char icon[] = "";
-	comp_ret_t ret;
 	time_t t = time(NULL);
-	if (t == -1) {
-		return ret_err(buf, bufsize, icon, "time: %s", errno);
-	}
+	assert(t != -1);
 	struct tm now;
-	if (localtime_r(&t, &now) == NULL) {
-		return ret_err(buf, bufsize,
-			       icon, "Unable to determine local time: %s",
-			       errno);
-	}
+	struct tm *ret_l = localtime_r(&t, &now);
+	assert(ret_l);
 	char output[bufsize];
-	if (strftime(output, sizeof(output), date_fmt, &now) == 0) {
-		snprintf(buf, bufsize, "%s %s", icon, NO_VAL_STR);
-		return (comp_ret_t){ false, "Unable to format time" };
-	}
+	size_t ret_s = strftime(output, sizeof(output), date_fmt, &now);
+	assert(ret_s);
 	snprintf(buf, bufsize, "%s %s", icon, output);
-	ret.ok = true;
-	return ret;
 }
