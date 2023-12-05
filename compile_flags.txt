@@ -1,8 +1,11 @@
 -xc
--std=c17
+-std=c11
 -Wall
 -Wextra
 -Wpedantic
+-Wno-unused-parameter
+-Wconversion
+-Wno-sign-conversion
 -Wshadow
 -Werror
 -D_DEFAULT_SOURCE
