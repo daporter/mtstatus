@@ -4,9 +4,6 @@
 
 #include <assert.h>
 #include <errno.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,14 +11,14 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-static char *util_cat(char *dest, const char *end, const char *str)
+char *util_cat(char *dest, const char *end, const char *str)
 {
 	while (dest < end && *str)
 		*dest++ = *str++;
 	return dest;
 }
 
-static int util_fmt_human(char *buf, size_t len, uintmax_t num, int base)
+int util_fmt_human(char *buf, size_t len, uintmax_t num, int base)
 {
 	double scaled;
 	size_t prefixlen;
@@ -65,16 +62,14 @@ static void argv_str(char *buf, const size_t bufsize, char *const argv[])
 	*p = '\0';
 }
 
-static bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
+bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 {
 	assert(argv[0] && "argv[0] must not be NULL");
 
-	char errstr[64];
 	int pipefd[2];
 	int r = pipe(pipefd);
 	if (r == -1) {
-		strerror_r(errno, errstr, sizeof(errstr));
-		log_err("Error creating pipe: %s\n", errstr);
+		log_errno(errno, "Error creating pipe");
 		return false;
 	}
 
@@ -83,8 +78,7 @@ static bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 	pid_t pid = fork();
 	switch (pid) {
 	case -1:
-		strerror_r(errno, errstr, sizeof(errstr));
-		log_err("Error: unable to fork: %s\n", errstr);
+		log_errno(errno, "Error: unable to fork");
 		return false;
 	case 0:
 		s = dup2(pipefd[1], 1);
@@ -97,15 +91,15 @@ static bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 		buf[nread - 1] = '\0'; /* Remove trailing newline */
 		s = waitpid(pid, &status, 0);
 		assert(s != -1);
-		char argv_s[64];
-		argv_str(argv_s, 64, argv);
+		char argv_s[MAXLEN];
+		argv_str(argv_s, sizeof(argv_s), argv);
 		if (!WIFEXITED(status)) {
-			log_err("Error: command terminated abnormally: '%s'\n",
+			log_err("Error: command terminated abnormally: '%s'",
 				argv_s);
 			return false;
 		}
 		if (WEXITSTATUS(status)) {
-			log_err("Error: command exited with status %d: '%s'\n",
+			log_err("Error: command exited with status %d: '%s'",
 				status, argv_s);
 			return false;
 		}

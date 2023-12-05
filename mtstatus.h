@@ -7,8 +7,9 @@
 #define NO_VAL_STR "??"
 #define ERR_STR    "err"
 
-static Display *dpy;
+Display *dpy;
 
-static void log_err(const char *fmt, ...);
+void log_err(const char *fmt, ...);
+void log_errno(int errnum, const char *fmt, ...);
 
 #endif

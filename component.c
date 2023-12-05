@@ -36,7 +36,7 @@ static void render_component(char *buf, const size_t bufsize,
 	assert(n >= 0 && (size_t)n < bufsize);
 }
 
-static void comp_keyb_ind(char *buf, const size_t bufsize, const char *args)
+void comp_keyb_ind(char *buf, const size_t bufsize, const char *args)
 {
 	if (dpy) {
 		XKeyboardState state;
@@ -68,7 +68,7 @@ void comp_notmuch(char *buf, const size_t bufsize, const char *args)
 	char cmdbuf[BUF_SIZE] = { 0 };
 	bool s = util_run_cmd(cmdbuf, sizeof(cmdbuf), argv);
 	if (!s) {
-		log_err("Unable to run 'notmuch'\n", stderr);
+		log_err("Unable to run 'notmuch'");
 		render_component(buf, bufsize, " %s", ERR_STR);
 		return;
 	}
@@ -82,15 +82,13 @@ bool parse_net_stats(char *buf, const size_t bufsize, uint64_t *val, char *path)
 {
 	FILE *f = fopen(path, "r");
 	if (!f) {
-		char errstr[64];
-		strerror_r(errno, errstr, sizeof(errstr));
-		log_err("Error: unable to open '%s': %s\n", path, errstr);
+		log_errno(errno, "Error: unable to open '%s'", path);
 		return false;
 	}
 	int n = fscanf(f, "%lu", val);
 	(void)fclose(f);
 	if (n != 1) {
-		log_err("Error: unable to parse '%s'\n", path);
+		log_err("Error: unable to parse '%s'", path);
 		return false;
 	}
 	return true;
@@ -105,12 +103,12 @@ void comp_net_traffic(char *buf, const size_t bufsize, const char *iface)
 	int n = snprintf(path, sizeof(path),
 		 "/sys/class/net/%s/statistics/rx_bytes", iface);
 	if (n < 0) {
-		log_err("Error creating rx_bytes filepath for '%s'\n", iface);
+		log_err("Error creating rx_bytes filepath for '%s'", iface);
 		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
 		return;
 	}
 	if ((size_t)n >= sizeof(path)) {
-		log_err("Error: rx_bytes filepath for '%s' too big\n", iface);
+		log_err("Error: rx_bytes filepath for '%s' too big", iface);
 		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
 		return;
 	}
@@ -119,7 +117,7 @@ void comp_net_traffic(char *buf, const size_t bufsize, const char *iface)
 
 	bool s = parse_net_stats(buf, bufsize, &rx_cur, path);
 	if (!s) {
-		log_err("Unable to parse network rx bytes\n");
+		log_err("Unable to parse network rx bytes");
 		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
 		return;
 	}
@@ -127,19 +125,19 @@ void comp_net_traffic(char *buf, const size_t bufsize, const char *iface)
 	n = snprintf(path, sizeof(path),
 		     "/sys/class/net/%s/statistics/tx_bytes", iface);
 	if (n < 0) {
-		log_err("Error creating tx_bytes filepath for '%s'\n", iface);
+		log_err("Error creating tx_bytes filepath for '%s'", iface);
 		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
 		return;
 	}
 	if ((size_t)n >= sizeof(path)) {
-		log_err("Error: tx_bytes filepath for '%s' too big\n", iface);
+		log_err("Error: tx_bytes filepath for '%s' too big", iface);
 		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
 		return;
 	}
 
 	s = parse_net_stats(buf, bufsize, &tx_cur, path);
 	if (!s) {
-		log_err("Unable to parse network tx bytes\n");
+		log_err("Unable to parse network tx bytes");
 		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
 		return;
 	}
@@ -156,7 +154,8 @@ void comp_net_traffic(char *buf, const size_t bufsize, const char *iface)
 	char rx_buf[BUF_SIZE], tx_buf[BUF_SIZE];
 	util_fmt_human(rx_buf, sizeof(rx_buf), rx, K_IEC);
 	util_fmt_human(tx_buf, sizeof(tx_buf), tx, K_IEC);
-	render_component(buf, bufsize, "%7s%s▾ %7s%s▴", rx_buf, "B", tx_buf, "B");
+	render_component(buf, bufsize, "%7s%s▾ %7s%s▴",
+			 rx_buf, "B", tx_buf, "B");
 }
 
 void comp_cpu(char *buf, const size_t bufsize, const char *args)
@@ -164,9 +163,7 @@ void comp_cpu(char *buf, const size_t bufsize, const char *args)
 	char file[] = "/proc/stat";
 	FILE *fp = fopen(file, "r");
 	if (!fp) {
-		char errstr[64];
-		strerror_r(errno, errstr, sizeof(errstr));
-		log_err("Error: unable to open '%s': %s\n", file, errstr);
+		log_errno(errno, "Error: unable to open '%s'", file);
 		render_component(buf, bufsize, " %s", ERR_STR);
 		return;
 	}
@@ -177,7 +174,7 @@ void comp_cpu(char *buf, const size_t bufsize, const char *args)
 		       &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6]);
 	(void)fclose(fp);
 	if (n != LEN(t)) {
-		log_err("Error parsing '%s'\n", file);
+		log_err("Error parsing '%s'", file);
 		render_component(buf, bufsize, " %s", ERR_STR);
 		return;
 	}
@@ -205,25 +202,19 @@ bool parse_val(char *data, size_t datasz,
 	data[datasz - 1] = '\0';
 
 	char *s = strstr(data, target);
-	if (!s) {
-		return false;
-	}
+	if (!s) return false;
 	unsigned i;
 	char *token = NULL;
 	char *p, *saveptr;
 	for (i = 0, p = s; i < nfield; i++, p = NULL) {
 		token = strtok_r(p, " ", &saveptr);
-		if (!token) {
-			return false;
-		}
+		if (!token) return false;
 	}
 	assert(token);
 	errno = 0;
 	*result = strtol(token, NULL, 0);
 	if (errno) {
-		char errstr[64];
-		strerror_r(errno, errstr, sizeof(errstr));
-		log_err("Error converting '%s': %s\n", token, errstr);
+		log_errno(errno, "Error converting '%s'", token);
 		return false;
 	}
 	return true;
@@ -236,7 +227,7 @@ bool parse_meminfo(char *out, const size_t outsize,
 	long val;
 	bool s = parse_val(data, datasz, target, 2, &val);
 	if (!s) {
-		log_err("Unable to parse available memory\n");
+		log_err("Unable to parse available memory");
 		return false;
 	}
 	util_fmt_human(out, outsize, val * K_IEC, K_IEC);
@@ -250,7 +241,7 @@ bool parse_wireless(char *out, const size_t outsize,
 	long val;
 	bool s = parse_val(data, datasz, target, 3, &val);
 	if (!s) {
-		log_err("Unable to parse wifi strength\n");
+		log_err("Unable to parse wifi strength");
 		return false;
 	}
 
@@ -266,9 +257,7 @@ bool parse_file(char *buf, const size_t bufsize,
 
 	FILE *f = fopen(file, "r");
 	if (!f) {
-		char errstr[64];
-		strerror_r(errno, errstr, sizeof(errstr));
-		log_err("Error: unable to open '%s': %s\n", file, errstr);
+		log_errno(errno, "Error: unable to open '%s'", file);
 		goto out;
 	}
 	char *data = NULL;
@@ -276,9 +265,7 @@ bool parse_file(char *buf, const size_t bufsize,
 	errno = 0;
 	ssize_t nread = getdelim(&data, &len, '\0', f);
 	if (nread == -1) {
-		char errstr[64];
-		strerror_r(errno, errstr, sizeof(errstr));
-		log_err("Error reading '%s': %s\n", file, errstr);
+		log_errno(errno, "Error reading '%s'", file);
 		goto cleanup;
 	}
 	bool s = parse(buf, bufsize, data, nread, target);
@@ -300,7 +287,7 @@ void comp_mem_avail(char *buf, const size_t bufsize, const char *args)
 	bool s = parse_file(value, sizeof(value),
 			    "/proc/meminfo", "MemAvailable", parse_meminfo);
 	if (!s) {
-		log_err("Unable to determine available memory\n");
+		log_err("Unable to determine available memory");
 		render_component(buf, bufsize, " %s", ERR_STR);
 		return;
 	}
@@ -309,7 +296,6 @@ void comp_mem_avail(char *buf, const size_t bufsize, const char *args)
 
 bool wifi_essid(char *buf, const char *iface)
 {
-	char errstr[64];
 	bool ret = false;
 
 	assert(iface);
@@ -322,14 +308,12 @@ bool wifi_essid(char *buf, const char *iface)
 
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1) {
-		strerror_r(errno, errstr, sizeof(errstr));
-		log_err("Error creating socket: %s\n", errstr);
+		log_errno(errno, "Error creating socket: %s");
 		goto out;
 	}
 	iwreq.u.essid.pointer = buf;
 	if (ioctl(sockfd, SIOCGIWESSID, &iwreq) == -1) {
-		strerror_r(errno, errstr, sizeof(errstr));
-		log_err("Error reading socket: %s\n", errstr);
+		log_errno(errno, "Error reading socket: %s");
 		goto cleanup;
 	}
 	ret = true;
@@ -349,7 +333,7 @@ void comp_wifi(char *buf, const size_t bufsize, const char *device)
 	bool s = parse_file(value, sizeof(value),
 			    "/proc/net/wireless", device, parse_wireless);
 	if (!s) {
-		log_err("Unable to determine wifi strength\n");
+		log_err("Unable to determine wifi strength");
 		render_component(buf, bufsize, " %s", ERR_STR);
 		return;
 	}
@@ -361,10 +345,8 @@ void comp_disk_free(char *buf, const size_t bufsize, const char *path)
 	struct statvfs fs;
 	int r = statvfs(path, &fs);
 	if (r == -1) {
-		char errstr[64];
-		strerror_r(errno, errstr, sizeof(errstr));
-		log_err("Error: statvfs: %s\n", errstr);
-		log_err("Unable to determine disk free space\n");
+		log_errno(errno, "Error: statvfs: %s");
+		log_err("Unable to determine disk free space");
 		render_component(buf, bufsize, "󰋊 %s", ERR_STR);
 		return;
 	}
@@ -381,7 +363,7 @@ void comp_volume(char *buf, const size_t bufsize, const char *path)
 	char cmdbuf[BUF_SIZE] = { 0 };
 	bool s = util_run_cmd(cmdbuf, sizeof(cmdbuf), argv);
 	if (!s) {
-		log_err("Unable to determine volume\n");
+		log_err("Unable to determine volume");
 		render_component(buf, bufsize, "󰝟 %s", ERR_STR);
 		return;
 	}

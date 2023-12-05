@@ -1,14 +1,16 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "mtstatus.h"
-#include "util.c"
+
 #include "component.c"
+#include "util.c"
 
 #include <libgen.h>
 
 #define N_COMPONENTS ((sizeof component_defns) / (sizeof(sbar_comp_defn_t)))
 
-#define MAXLEN 128
+#define MAXLEN	     128
+#define ERR_BUF_SIZE 1024	/* Size recommended by "man strerror_r" */
 
 /*
  * Function that returns an updated value for a status bar component.
@@ -69,17 +71,32 @@ static const sbar_comp_defn_t component_defns[] = {
 static char pidfile[MAXLEN];
 static bool to_stdout = false;
 
-static void log_err(const char *fmt, ...)
+void log_err(const char *fmt, ...) /*  */
 {
 	va_list ap;
 	va_start(ap, fmt);
 	(void)vfprintf(stderr, fmt, ap);
+	(void)fputc('\n', stderr);
 	va_end(ap);
+}
+
+void log_errno(int errnum, const char *fmt, ...)
+{
+	char msg[MAXLEN], err[ERR_BUF_SIZE];
+
+	va_list ap;
+	va_start(ap, fmt);
+	int n = vsnprintf(msg, sizeof(msg), fmt, ap);
+	assert(n >= 0 && (size_t)n < sizeof(msg));
+	va_end(ap);
+
+	strerror_r(errnum, err, sizeof(err));
+	log_err("%s: %s", msg, err);
 }
 
 static void fatal(int code)
 {
-	log_err("mtstatus: fatal: %s\n", strerror(code));
+	log_err("mtstatus: fatal: %s", strerror(code));
 	if (!to_stdout && remove(pidfile) < 0) {
 		log_err("Unable to remove %s", pidfile);
 	}
