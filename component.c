@@ -80,14 +80,26 @@ void comp_notmuch(char *buf, const size_t bufsize, const char *args)
 	render_component(buf, bufsize, "%s %ld", (count ? "" : ""), count);
 }
 
-bool parse_net_stats(char *buf, const size_t bufsize, uint64_t *val, char *path)
+bool parse_net_stats(char *buf, const size_t bufsize, uint64_t *val,
+		     const char *path_templ, const char *iface)
 {
+	char path[PATH_MAX];
+	int n = snprintf(path, sizeof(path), path_templ, iface);
+	if (n < 0) {
+		log_err("Error creating net statistics filepath for '%s'", iface);
+		return false;
+	}
+	if ((size_t)n >= sizeof(path)) {
+		log_err("Error: net statistics filepath for '%s' too big", iface);
+		return false;
+	}
+
 	FILE *f = fopen(path, "r");
 	if (!f) {
 		log_errno(errno, "Error: unable to open '%s'", path);
 		return false;
 	}
-	int n = fscanf(f, "%lu", val);
+	n = fscanf(f, "%lu", val);
 	(void)fclose(f);
 	if (n != 1) {
 		log_err("Error: unable to parse '%s'", path);
@@ -98,50 +110,19 @@ bool parse_net_stats(char *buf, const size_t bufsize, uint64_t *val, char *path)
 
 void comp_net_traffic(char *buf, const size_t bufsize, const char *iface)
 {
-	char path[PATH_MAX];
-
-	// TODO(david): Remove the duplication here.
-
-	int n = snprintf(path, sizeof(path),
-		 "/sys/class/net/%s/statistics/rx_bytes", iface);
-	if (n < 0) {
-		log_err("Error creating rx_bytes filepath for '%s'", iface);
-		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
-		return;
-	}
-	if ((size_t)n >= sizeof(path)) {
-		log_err("Error: rx_bytes filepath for '%s' too big", iface);
-		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
-		return;
-	}
-
 	uint64_t rx_cur, tx_cur;
 
-	bool s = parse_net_stats(buf, bufsize, &rx_cur, path);
+	bool s = parse_net_stats(buf, bufsize, &rx_cur,
+				 "/sys/class/net/%s/statistics/rx_bytes", iface);
 	if (!s) {
 		log_err("Unable to parse network rx bytes");
-		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
-		return;
+		goto err_ret;
 	}
-
-	n = snprintf(path, sizeof(path),
-		     "/sys/class/net/%s/statistics/tx_bytes", iface);
-	if (n < 0) {
-		log_err("Error creating tx_bytes filepath for '%s'", iface);
-		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
-		return;
-	}
-	if ((size_t)n >= sizeof(path)) {
-		log_err("Error: tx_bytes filepath for '%s' too big", iface);
-		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
-		return;
-	}
-
-	s = parse_net_stats(buf, bufsize, &tx_cur, path);
+	s = parse_net_stats(buf, bufsize, &tx_cur,
+				 "/sys/class/net/%s/statistics/tx_bytes", iface);
 	if (!s) {
 		log_err("Unable to parse network tx bytes");
-		render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
-		return;
+		goto err_ret;
 	}
 
 	static uint64_t rx_prev, tx_prev;
@@ -158,6 +139,10 @@ void comp_net_traffic(char *buf, const size_t bufsize, const char *iface)
 	util_fmt_human(tx_buf, sizeof(tx_buf), tx, K_IEC);
 	render_component(buf, bufsize, "%7s%s▾ %7s%s▴",
 			 rx_buf, "B", tx_buf, "B");
+	return;
+
+err_ret:
+	render_component(buf, bufsize, "%s▾ %s▴", ERR_STR, ERR_STR);
 }
 
 void comp_cpu(char *buf, const size_t bufsize, const char *args)
@@ -166,8 +151,7 @@ void comp_cpu(char *buf, const size_t bufsize, const char *args)
 	FILE *fp = fopen(file, "r");
 	if (!fp) {
 		log_errno(errno, "Error: unable to open '%s'", file);
-		render_component(buf, bufsize, " %s", ERR_STR);
-		return;
+		goto err_ret;
 	}
 
 	uint64_t t[7];
@@ -177,8 +161,7 @@ void comp_cpu(char *buf, const size_t bufsize, const char *args)
 	(void)fclose(fp);
 	if (n != LEN(t)) {
 		log_err("Error parsing '%s'", file);
-		render_component(buf, bufsize, " %s", ERR_STR);
-		return;
+		goto err_ret;
 	}
 
 	static uint64_t total_prev, idle_prev;
@@ -195,6 +178,10 @@ void comp_cpu(char *buf, const size_t bufsize, const char *args)
 
 	uint64_t usage = 100 * (total - idle) / total;
 	render_component(buf, bufsize, " %ld%%", usage);
+	return;
+
+err_ret:
+	render_component(buf, bufsize, " %s", ERR_STR);
 }
 
 bool parse_val(char *data, size_t datasz,
