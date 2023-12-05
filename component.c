@@ -335,13 +335,13 @@ void comp_disk_free(char *buf, const size_t bufsize, const char *path)
 	if (r == -1) {
 		log_errno(errno, "Error: statvfs: %s");
 		log_err("Unable to determine disk free space");
-		render_component(buf, bufsize, "󰋊 %s", ERR_STR);
+		render_component(buf, bufsize, "󰋊%s", ERR_STR);
 		return;
 	}
 	char output[bufsize];
 	util_fmt_human(output, sizeof(output),
 		       fs.f_frsize * fs.f_bavail, K_IEC);
-	render_component(buf, bufsize, "󰋊 %sB", output);
+	render_component(buf, bufsize, "󰋊%sB", output);
 }
 
 void comp_volume(char *buf, const size_t bufsize, const char *path)
@@ -368,5 +368,5 @@ void comp_datetime(char *buf, const size_t bufsize, const char *date_fmt)
 	char output[bufsize];
 	size_t ret_s = strftime(output, sizeof(output), date_fmt, &now);
 	assert(ret_s);
-	render_component(buf, bufsize, "  %s", output);
+	render_component(buf, bufsize, " %s", output);
 }

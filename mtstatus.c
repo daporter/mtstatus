@@ -68,7 +68,7 @@ static const sbar_comp_defn_t component_defns[] = {
 static char pidfile[MAXLEN];
 static bool to_stdout = false;
 
-void log_err(const char *fmt, ...) /*  */
+void log_err(const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
