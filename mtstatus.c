@@ -9,9 +9,6 @@
 
 #define N_COMPONENTS ((sizeof component_defns) / (sizeof(sbar_comp_defn_t)))
 
-#define MAXLEN	     128
-#define ERR_BUF_SIZE 1024	/* Size recommended by "man strerror_r" */
-
 /*
  * Function that returns an updated value for a status bar component.
  */

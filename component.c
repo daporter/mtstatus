@@ -18,6 +18,8 @@
 #include <sys/statvfs.h>
 #include <unistd.h>
 
+#define MAX_WIFI_QUALITY 70   /* Max link quality value in /proc/net/wireless */
+
 #define BUF_SIZE 128
 
 typedef bool (*parser_t)(char *, const size_t, char *, const size_t,
@@ -245,8 +247,7 @@ bool parse_wireless(char *out, const size_t outsize,
 		return false;
 	}
 
-	/* 70 is the max of /proc/net/wireless */
-	render_component(out, outsize, "%ld", (val * 100 / 70));
+	render_component(out, outsize, "%ld", (val * 100 / MAX_WIFI_QUALITY));
 	return true;
 }
 
