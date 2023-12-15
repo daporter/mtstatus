@@ -16,38 +16,35 @@ typedef void (*sbar_updater_t)(char *buf, const size_t bufsize,
 			       const char *args);
 
 typedef struct sbar_comp_defn sbar_comp_defn_t;
-
 struct sbar_comp_defn {
-	const sbar_updater_t update;
-	const char *args;
-	const time_t interval;
-	const int signum;
+	const sbar_updater_t	 update;
+	const char		*args;
+	const time_t		 interval;
+	const int		 signum;
 };
 
 typedef struct sbar_comp sbar_comp_t;
-
 struct sbar_comp {
-	unsigned id;
-	char *buf;
-	sbar_updater_t update;
-	const char *args;
-	time_t interval;
-	int signum;
-	pthread_t thr_repeating;
-	pthread_t thr_async;
-	struct sbar *sbar;
+	unsigned	 id;
+	char		*buf;
+	sbar_updater_t	 update;
+	const char	*args;
+	time_t		 interval;
+	int		 signum;
+	pthread_t	 thr_repeating;
+	pthread_t	 thr_async;
+	struct sbar	*sbar;
 };
 
 typedef struct sbar sbar_t;
-
 struct sbar {
-	char *comp_bufs;
-	uint8_t ncomponents;
-	sbar_comp_t *components;
-	bool dirty;
-	pthread_mutex_t mutex;
-	pthread_cond_t dirty_cond;
-	pthread_t thread;
+	char		*comp_bufs;
+	uint8_t		 ncomponents;
+	sbar_comp_t	*components;
+	bool		 dirty;
+	pthread_mutex_t	 mutex;
+	pthread_cond_t	 dirty_cond;
+	pthread_t	 thread;
 };
 
 /* clang-format off */
@@ -102,11 +99,11 @@ static void fatal(int code)
 
 static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 {
-	int i = 0;
-	char *ptr = buf;
-	char *end = buf + bufsize;
-	const char *cbuf;
-	int r;
+	int		 i   = 0;
+	char		*ptr = buf;
+	char		*end = buf + bufsize;
+	const char	*cbuf;
+	int		 r;
 
 	/*
 	 * Maintain the status bar "dirty" invariant.
@@ -117,7 +114,9 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 		r = pthread_cond_wait(&sbar->dirty_cond, &sbar->mutex);
 		assert(r == 0);
 	}
-	for (i = 0; (ptr < end) && (i < sbar->ncomponents - 1); i++) {
+	for (i = 0;
+	     (ptr < end) && (i < sbar->ncomponents - 1);
+	     i++) {
 		cbuf = sbar->components[i].buf;
 		if (strlen(cbuf) > 0) {
 			ptr = util_cat(ptr, end, cbuf);
@@ -130,7 +129,7 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 			ptr = util_cat(ptr, end, cbuf);
 		}
 	}
-	*ptr = '\0';
+	*ptr = 0;
 
 	sbar->dirty = false;
 	r = pthread_mutex_unlock(&sbar->mutex);
@@ -190,7 +189,6 @@ static void *thread_repeating(void *arg)
 		sleep((unsigned)c->interval);
 		sbar_comp_update(c);
 	}
-
 	return NULL;
 }
 
@@ -244,14 +242,9 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	}
 	sbar->dirty = false;
 	r = pthread_mutex_init(&sbar->mutex, NULL);
-	if (r != 0) {
-		// TODO(david): Should these be asserts?
-		fatal(r);
-	}
+	if (r != 0) fatal(r);
 	r = pthread_cond_init(&sbar->dirty_cond, NULL);
-	if (r != 0) {
-		fatal(r);
-	}
+	if (r != 0) fatal(r);
 
 	/*
 	 * The signal for which each asynchronous component thread will wait
@@ -277,67 +270,47 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 		cp->interval = comp_defns[i].interval;
 		cp->signum = comp_defns[i].signum;
 		if (cp->signum >= 0) {
-			/*
-			 * Assume ‘signum’ specifies a real-time signal number
-			 * and adjust the value accordingly.
-			 */
+			/* We assume ‘signum’ specifies an offset into the
+			   real-time signal numbers and adjust it
+			   accordingly. */
 			cp->signum += SIGRTMIN;
 			if (sigaddset(&sigset, cp->signum) < 0) {
-				// TODO(david): Should this be an assert?
 				fatal(errno);
 			}
 		}
-
 		cp->sbar = sbar;
 	}
-
 	r = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
-	if (r != 0) {
-		fatal(r);
-	}
+	assert(!r);
 }
 
 static void sbar_start(sbar_t *sbar)
 {
-	pthread_attr_t attr;
-	pthread_t tid;
-	sbar_comp_t *c;
-	int r;
+	pthread_attr_t	 attr;
+	pthread_t	 tid;
+	sbar_comp_t	*c;
+	int		 r;
 
 	r = pthread_attr_init(&attr);
-	if (r != 0) {
-		fatal(r);
-	}
+	if (r) fatal(r);
 	r = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-	if (r != 0) {
-		fatal(r);
-	}
+	if (r) fatal(r);
 	r = pthread_create(&sbar->thread, &attr, thread_flush, sbar);
-	if (r != 0) {
-		fatal(r);
-	}
+	if (r) fatal(r);
 
 	for (uint8_t i = 0; i < sbar->ncomponents; i++) {
 		c = &sbar->components[i];
-
 		r = pthread_create(&tid, &attr, thread_once, c);
-		if (r != 0) {
-			fatal(r);
-		}
-
+		if (r) fatal(r);
 		if (c->interval >= 0) {
 			r = pthread_create(&c->thr_repeating, &attr,
 					   thread_repeating, c);
-			if (r != 0) {
-				fatal(r);
-			}
+			if (r) fatal(r);
 		}
 		if (c->signum >= 0) {
 			r = pthread_create(&c->thr_async, &attr, thread_async,
 					   c);
-			if (r != 0) {
-				fatal(r);
-			}
+			if (r) fatal(r);
 		}
 	}
 }
@@ -376,31 +349,21 @@ int main(int argc, char *argv[])
 				 basename(argv[0]));
 		assert(n >= 0 && (size_t)n < sizeof(pidfile));
 		f = fopen(pidfile, "w");
-		if (f == NULL) {
-			fatal(errno);
-		}
+		if (!f) fatal(errno);
 		if (fprintf(f, "%ld", (long)getpid()) < 0) {
 			fatal(errno);
 		}
 		(void)fclose(f);
 
 		dpy = XOpenDisplay(NULL);
-		if (dpy == NULL) {
-			fatal(errno);
-		}
+		if (!dpy) fatal(errno);
 	}
 
 	/* SIGINT and SIGTERM must be delivered only to the initial thread */
 	sigset_t sigset;
-	if (sigemptyset(&sigset) < 0) {
-		fatal(errno);
-	}
-	if (sigaddset(&sigset, SIGINT) < 0) {
-		fatal(errno);
-	}
-	if (sigaddset(&sigset, SIGTERM) < 0) {
-		fatal(errno);
-	}
+	if (sigemptyset(&sigset) < 0)        fatal(errno);
+	if (sigaddset(&sigset, SIGINT) < 0)  fatal(errno);
+	if (sigaddset(&sigset, SIGTERM) < 0) fatal(errno);
 	pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 
 	/* Start the status bar */
@@ -410,9 +373,7 @@ int main(int argc, char *argv[])
 	/* Wait for SIGINT, SIGTERM */
 	int sig, r;
 	r = sigwait(&sigset, &sig);
-	if (r == -1) {
-		fatal(r);
-	}
+	if (r == -1) fatal(r);
 
 	switch (sig) {
 	case SIGINT:
