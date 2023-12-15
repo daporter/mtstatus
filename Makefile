@@ -11,7 +11,7 @@ debug: CFLAGS += -Werror -g3 -fsanitize=address,undefined
 debug: CFLAGS += -fno-omit-frame-pointer -fanalyzer
 debug: mtstatus
 
-release: CFLAGS += -DNDEBUG -O2
+release: CFLAGS += -DNDEBUG -O2 -Wno-unused
 release: mtstatus
 
 mtstatus: mtstatus.c mtstatus.h component.c util.c util.h
