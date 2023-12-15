@@ -56,7 +56,7 @@ static const sbar_comp_defn_t component_defns[] = {
 	{ comp_cpu,		0,		 1,	-1 },
 	{ comp_mem_avail,	0,		 2,	-1 },
 	{ comp_disk_free,	"/",		15,	-1 },
-	{ comp_volume,		0,		-1,	 2 },
+	{ comp_volume,		0,		60,	 2 },
 	{ comp_wifi,		"wlan0",	 5,	-1 },
 	{ comp_datetime,	"%a %d %b %R",	30,	-1 },
 };
