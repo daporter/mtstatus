@@ -46,7 +46,7 @@ void comp_keyb_ind(char *buf, const size_t bufsize, const char *args)
 
 		bool caps_on    = state.led_mask & (1 << 0);
 		bool numlock_on = state.led_mask & (1 << 1);
-		char *val = "";
+		const char *val = "";
 		if (caps_on && numlock_on) {
 			val = "Caps Num";
 		} else if (caps_on) {
@@ -64,9 +64,9 @@ void comp_keyb_ind(char *buf, const size_t bufsize, const char *args)
 void comp_notmuch(char *buf, const size_t bufsize, const char *args)
 {
 	char *const argv[]= { "notmuch",
-			       "count",
-			       "tag:unread NOT tag:archived",
-			       NULL };
+	                      "count",
+	                      "tag:unread NOT tag:archived",
+	                      NULL };
 	char cmdbuf[BUF_SIZE] = { 0 };
 	bool s = util_run_cmd(cmdbuf, sizeof(cmdbuf), argv);
 	if (!s) {
@@ -113,13 +113,14 @@ void comp_net_traffic(char *buf, const size_t bufsize, const char *iface)
 	uint64_t rx_cur, tx_cur;
 
 	bool s = parse_net_stats(buf, bufsize, &rx_cur,
-				 "/sys/class/net/%s/statistics/rx_bytes", iface);
+	                         "/sys/class/net/%s/statistics/rx_bytes",
+	                         iface);
 	if (!s) {
 		log_err("Unable to parse network rx bytes");
 		goto err_ret;
 	}
 	s = parse_net_stats(buf, bufsize, &tx_cur,
-				 "/sys/class/net/%s/statistics/tx_bytes", iface);
+	                    "/sys/class/net/%s/statistics/tx_bytes", iface);
 	if (!s) {
 		log_err("Unable to parse network tx bytes");
 		goto err_ret;
@@ -138,7 +139,7 @@ void comp_net_traffic(char *buf, const size_t bufsize, const char *iface)
 	util_fmt_human(rx_buf, sizeof(rx_buf), rx, K_IEC);
 	util_fmt_human(tx_buf, sizeof(tx_buf), tx, K_IEC);
 	render_component(buf, bufsize, "%7s%s▾ %7s%s▴",
-			 rx_buf, "B", tx_buf, "B");
+	                 rx_buf, "B", tx_buf, "B");
 	return;
 
 err_ret:
@@ -147,7 +148,7 @@ err_ret:
 
 void comp_cpu(char *buf, const size_t bufsize, const char *args)
 {
-	char file[] = "/proc/stat";
+	const char *file = "/proc/stat";
 	FILE *fp = fopen(file, "r");
 	if (!fp) {
 		log_errno(errno, "Error: unable to open '%s'", file);
@@ -156,8 +157,8 @@ void comp_cpu(char *buf, const size_t bufsize, const char *args)
 
 	uint64_t t[7];
 	int n = fscanf(fp,
-		       "cpu  %lu %lu %lu %lu %lu %lu %lu",
-		       &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6]);
+	               "cpu  %lu %lu %lu %lu %lu %lu %lu",
+	               &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6]);
 	(void)fclose(fp);
 	if (n != LEN(t)) {
 		log_err("Error parsing '%s'", file);
@@ -210,8 +211,8 @@ bool parse_val(char *data, size_t datasz,
 }
 
 bool parse_meminfo(char *out, const size_t outsize,
-		   char *data, const size_t datasz,
-		   const char *target)
+                   char *data, const size_t datasz,
+                   const char *target)
 {
 	long val;
 	bool s = parse_val(data, datasz, target, 2, &val);
@@ -224,8 +225,8 @@ bool parse_meminfo(char *out, const size_t outsize,
 }
 
 bool parse_wireless(char *out, const size_t outsize,
-		    char *data, const size_t datasz,
-		    const char *target)
+                    char *data, const size_t datasz,
+                    const char *target)
 {
 	long val;
 	bool s = parse_val(data, datasz, target, 3, &val);
@@ -239,7 +240,7 @@ bool parse_wireless(char *out, const size_t outsize,
 }
 
 bool parse_file(char *buf, const size_t bufsize,
-		char *file, const char *target, parser_t parse)
+                char *file, const char *target, parser_t parse)
 {
 	bool ret = false;
 
@@ -273,7 +274,7 @@ void comp_mem_avail(char *buf, const size_t bufsize, const char *args)
 {
 	char value[BUF_SIZE];
 	bool s = parse_file(value, sizeof(value),
-			    "/proc/meminfo", "MemAvailable", parse_meminfo);
+                            "/proc/meminfo", "MemAvailable", parse_meminfo);
 	if (!s) {
 		log_err("Unable to determine available memory");
 		render_component(buf, bufsize, " %s", ERR_STR);

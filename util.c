@@ -24,7 +24,8 @@ int util_fmt_human(char *buf, size_t len, uintmax_t num, int base)
 	size_t prefixlen;
 	uint8_t i;
 	const char **prefix;
-	const char *prefix_si[] = { "", "k", "M", "G", "T", "P", "E", "Z", "Y" };
+	const char *prefix_si[] = { "", "k", "M", "G", "T",
+                                    "P", "E", "Z", "Y" };
 	const char *prefix_iec[] = { "",   "Ki", "Mi", "Gi", "Ti",
 				     "Pi", "Ei", "Zi", "Yi" };
 
