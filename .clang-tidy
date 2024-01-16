@@ -1,27 +1,29 @@
----
 Checks: >-
-  -*,
   bugprone-*,
-  -bugprone-assignment-in-if-condition,
-  -bugprone-easily-swappable-parameters,
   cert-*,
   clang-analyzer-*,
   concurrency-*,
   google-*,
-  -google-readability-braces-around-statements,
   linuxkernel-*,
   llvm-*,
-  -llvm-header-guard,
   misc-*,
-  -misc-unused-parameters,
   modernize-*,
-  -modernize-macro-to-enum,
   performance-*,
   portability-*,
   readability-*,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-suspicious-include,
+  -clang-analyzer-security.insecureAPI.*,
+  -google-readability-braces-around-statements,
+  -llvm-header-guard,
+  -misc-unused-parameters,
+  -modernize-macro-to-enum,
   -readability-braces-around-statements,
   -readability-identifier-length,
-  -readability-isolate-declaration
+  -readability-isolate-declaration,
+  -readability-magic-numbers
+
 HeaderFilterRegex: 'src/.*'
 InheritParentConfig: true
-...
+WarningsAsErrors: '*'
