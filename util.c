@@ -1,13 +1,11 @@
 #include "util.h"
 
-#include "mtstatus.h"
-
 #include <assert.h>
 #include <errno.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -24,8 +22,7 @@ int util_fmt_human(char *buf, size_t len, uintmax_t num, int base)
 	size_t prefixlen;
 	uint8_t i;
 	const char **prefix;
-	const char *prefix_si[] = { "", "k", "M", "G", "T",
-                                    "P", "E", "Z", "Y" };
+	const char *prefix_si[] = { "", "k", "M", "G", "T", "P", "E", "Z", "Y" };
 	const char *prefix_iec[] = { "",   "Ki", "Mi", "Gi", "Ti",
 				     "Pi", "Ei", "Zi", "Yi" };
 
@@ -80,6 +77,8 @@ bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 	switch (pid) {
 	case -1:
 		log_errno(errno, "Error: unable to fork");
+		close(pipefd[0]);
+		close(pipefd[1]);
 		return false;
 	case 0:
 		s = dup2(pipefd[1], 1);
@@ -92,7 +91,7 @@ bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 		buf[nread - 1] = '\0';	// Remove trailing newline
 		s = waitpid(pid, &status, 0);
 		assert(s != -1);
-		char argv_s[MAXLEN];
+		char argv_s[bufsize];
 		argv_str(argv_s, sizeof(argv_s), argv);
 		if (!WIFEXITED(status)) {
 			log_err("Error: command terminated abnormally: '%s'",
@@ -104,8 +103,30 @@ bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 				status, argv_s);
 			return false;
 		}
-		close(pipefd[0]);
-		close(pipefd[1]);
 	}
+
 	return true;
+}
+
+void log_err(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	(void)vfprintf(stderr, fmt, ap);
+	(void)fputc('\n', stderr);
+	va_end(ap);
+}
+
+void log_errno(int errnum, const char *fmt, ...)
+{
+	char msg[1024], err[1024];  // size recommended by "man strerror_r"
+
+	va_list ap;
+	va_start(ap, fmt);
+	int n = vsnprintf(msg, sizeof(msg), fmt, ap);
+	assert(n >= 0 && (size_t)n < sizeof(msg));
+	va_end(ap);
+
+	strerror_r(errnum, err, sizeof(err));
+	log_err("%s: %s", msg, err);
 }
