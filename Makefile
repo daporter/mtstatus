@@ -41,6 +41,10 @@ compile_flags.txt: Makefile
 analyse:
 	clang-tidy *.c -- $(CPPFLAGS) $(CFLAGS)
 
+mtstatus.o: config.h
 -include $(DEPS)
+
+config.h:
+	cp config.def.h $@
 
 .PHONY: all release debug clean install uninstall analyse
