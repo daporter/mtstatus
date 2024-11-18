@@ -1,8 +1,11 @@
+.POSIX:
+
 prefix = /usr/local
 bindir = $(prefix)/bin
 
 INSTALL = install
 
+CC       = cc
 CPPFLAGS = -D_DEFAULT_SOURCE
 CFLAGS   = -std=c11 -pthread -g3 -MMD -fanalyzer \
 	   -Wall -Wextra -Wpedantic -Wno-unused-parameter \
