@@ -13,7 +13,7 @@ debug: CFLAGS += -Werror -g3 -fsanitize=address,undefined
 debug: CFLAGS += -fno-omit-frame-pointer -fanalyzer
 debug: mtstatus
 
-install: release
+install:
 	mkdir -p $(PREFIX)/bin
 	install -m 755 mtstatus $(PREFIX)/bin
 
