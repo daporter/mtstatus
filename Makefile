@@ -1,36 +1,46 @@
-.POSIX:
+prefix = /usr/local
+bindir = $(prefix)/bin
 
-CC      = cc
-CFLAGS  = -std=c11 -pthread -D_DEFAULT_SOURCE
-CFLAGS += -Wall -Wextra -Wpedantic -Wno-unused-parameter
-CFLAGS += -Wconversion -Wno-sign-conversion -Wshadow
-LDLIBS  = -lX11
-PREFIX  = /usr/local
+INSTALL = install
 
-all: debug
+CPPFLAGS = -D_DEFAULT_SOURCE
+CFLAGS   = -std=c11 -pthread -g3 -MMD -fanalyzer \
+	   -Wall -Wextra -Wpedantic -Wno-unused-parameter \
+	   -Wconversion -Wno-sign-conversion -Wshadow
+LDLIBS   = -lX11
 
-debug: CFLAGS += -Werror -g3 -fsanitize=address,undefined
-debug: CFLAGS += -fno-omit-frame-pointer -fanalyzer
-debug: mtstatus
+SRCS = mtstatus.c component.c util.c
+OBJS = $(SRCS:.c=.o)
+DEPS = $(OBJS:.o=.d)
 
-install:
-	mkdir -p $(PREFIX)/bin
-	install -m 755 mtstatus $(PREFIX)/bin
+all: release
 
-uninstall:
-	rm -f $(PREFIX)/bin/mtstatus
-
-release: CFLAGS += -DNDEBUG -O2 -Wno-unused
+release: CPPFLAGS += -DNDEBUG
+release: CFLAGS   += -Wno-unused -O2
 release: mtstatus
 
-mtstatus: mtstatus.c mtstatus.h component.c util.c util.h Makefile
-	$(CC) $(CFLAGS) -o $@ $< $(LDLIBS)
+debug: CFLAGS  += -O0 -fno-omit-frame-pointer
+debug: LDFLAGS  = -fsanitize=address,undefined
+debug: mtstatus
 
-compile_flags.txt: Makefile
-	echo -xc $(CFLAGS) | tr ' ' '\n' > $@
-
-analyse:
-	clang-tidy *.c -- ${CFLAGS}
+mtstatus: $(OBJS)
 
 clean:
-	rm -rf mtstatus
+	rm -f $(OBJS) $(DEPS) mtstatus
+
+install: all
+	mkdir -p $(DESTDIR)$(bindir)
+	$(INSTALL) mtstatus $(DESTDIR)$(bindir)
+
+uninstall:
+	$(RM) $(DESTDIR)$(bindir)/mtstatus
+
+compile_flags.txt: Makefile
+	echo -xc $(CPPFLAGS) $(CFLAGS) | tr ' ' '\n' > $@
+
+analyse:
+	clang-tidy *.c -- $(CPPFLAGS) $(CFLAGS)
+
+-include $(DEPS)
+
+.PHONY: all release debug clean install uninstall analyse
