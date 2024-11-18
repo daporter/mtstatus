@@ -8,7 +8,6 @@
 #include <linux/limits.h>
 #include <linux/wireless.h>
 #include <pthread.h>
-#include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -18,7 +17,7 @@
 #include <sys/statvfs.h>
 #include <unistd.h>
 
-#define MAX_WIFI_QUALITY 70   /* Max link quality value in /proc/net/wireless */
+#define MAX_WIFI_QUALITY 70  // Max link quality value in /proc/net/wireless
 
 #define BUF_SIZE 128
 

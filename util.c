@@ -85,11 +85,11 @@ bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 		s = dup2(pipefd[1], 1);
 		assert(s != -1);
 		execvp(argv[0], argv);
-		_exit(EXIT_FAILURE); /* Failed exec */
+		_exit(EXIT_FAILURE);  // Failed exec
 	default:
 		nread = read(pipefd[0], buf, bufsize);
 		assert(nread != -1);
-		buf[nread - 1] = '\0'; /* Remove trailing newline */
+		buf[nread - 1] = '\0';	// Remove trailing newline
 		s = waitpid(pid, &status, 0);
 		assert(s != -1);
 		char argv_s[MAXLEN];
