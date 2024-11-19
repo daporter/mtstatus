@@ -1,4 +1,5 @@
 *.o
+*.d
 /config.h
 /mtstatus
 /compile_flags.txt
