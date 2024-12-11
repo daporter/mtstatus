@@ -11,6 +11,7 @@ void comp_mem_avail(char *buf, size_t bufsize, const char *args);
 void comp_disk_free(char *buf, size_t bufsize, const char *path);
 void comp_volume(char *buf, size_t bufsize, const char *path);
 void comp_wifi(char *buf, size_t bufsize, const char *device);
+void comp_battery(char *buf, size_t bufsize, const char *args);
 void comp_datetime(char *buf, size_t bufsize, const char *date_fmt);
 
 #endif
