@@ -17,7 +17,8 @@
 #include <sys/statvfs.h>
 #include <unistd.h>
 
-#define MAX_WIFI_QUALITY 70  // Max link quality value in /proc/net/wireless
+// Max link quality value in /proc/net/wireless
+#define MAX_WIFI_QUALITY 70
 
 #define BUF_SIZE 128
 
