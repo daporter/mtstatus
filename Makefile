@@ -7,9 +7,9 @@ INSTALL = install
 
 CC       = cc
 CPPFLAGS = -D_DEFAULT_SOURCE
-CFLAGS   = -std=c11 -pthread -g3 -MMD -fanalyzer \
-	   -Wall -Wextra -Wpedantic -Wno-unused-parameter \
-	   -Wconversion -Wno-sign-conversion -Wshadow
+CFLAGS   = -std=c11 -pthread -g3 -MMD -fstrict-aliasing -fanalyzer \
+	   -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wconversion \
+	   -Wno-sign-conversion -Wshadow -Wstrict-aliasing
 LDLIBS   = -lX11
 
 SRCS = mtstatus.c component.c util.c
