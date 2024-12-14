@@ -17,44 +17,42 @@
 
 #define _POSIX_C_SOURCE 200809L
 
-#define N_COMPONENTS ((sizeof component_defns) / (sizeof(sbar_comp_defn_t)))
+#define N_COMPONENTS ((sizeof component_defns) / (sizeof(ComponentDefn)))
 #define MAX_COMP_LEN 128
 
 /*
  * Function that returns an updated value for a status bar component.
  */
-typedef void (*sbar_updater_t)(char *buf, const size_t bufsize,
-			       const char *args);
+typedef void (*SBarUpdater)(char *buf, const size_t bufsize, const char *args);
 
-typedef struct sbar_comp_defn sbar_comp_defn_t;
+typedef struct sbar_comp_defn ComponentDefn;
 
 struct sbar_comp_defn {
-	const sbar_updater_t update;
+	const SBarUpdater update;
 	const char *args;
 	const time_t interval;
 	const int signum;
 };
 
-typedef struct sbar_comp sbar_comp_t;
+typedef struct component Component;
+typedef struct sbar StatusBar;
 
-struct sbar_comp {
+struct component {
 	unsigned id;
 	char *buf;
-	sbar_updater_t update;
+	SBarUpdater update;
 	const char *args;
 	time_t interval;
 	int signum;
 	pthread_t thr_repeating;
 	pthread_t thr_async;
-	struct sbar *sbar;
+	StatusBar *sbar;
 };
-
-typedef struct sbar sbar_t;
 
 struct sbar {
 	char *comp_bufs;
 	uint8_t ncomponents;
-	sbar_comp_t *components;
+	Component *components;
 	bool dirty;
 	pthread_mutex_t mutex;
 	pthread_cond_t dirty_cond;
@@ -77,7 +75,8 @@ static void fatal(int code)
 	exit(EXIT_FAILURE);
 }
 
-static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
+static void sbar_flush_on_dirty(StatusBar *sbar, char *buf,
+				const size_t bufsize)
 {
 	int i = 0;
 	char *ptr = buf;
@@ -114,7 +113,7 @@ static void sbar_flush_on_dirty(sbar_t *sbar, char *buf, const size_t bufsize)
 	assert(r == 0);
 }
 
-static void sbar_comp_update(const sbar_comp_t *c)
+static void sbar_comp_update(const Component *c)
 {
 	char tmpbuf[MAX_COMP_LEN];
 
@@ -137,7 +136,7 @@ static void sbar_comp_update(const sbar_comp_t *c)
 
 static void *thread_flush(void *arg)
 {
-	sbar_t *sbar = (sbar_t *)arg;
+	StatusBar *sbar = (StatusBar *)arg;
 	char status[N_COMPONENTS * MAX_COMP_LEN];
 
 	while (true) {
@@ -161,7 +160,7 @@ static void *thread_flush(void *arg)
 
 static void *thread_repeating(void *arg)
 {
-	const sbar_comp_t *c = (sbar_comp_t *)arg;
+	const Component *c = (Component *)arg;
 
 	while (true) {
 		sleep((unsigned)c->interval);
@@ -172,7 +171,7 @@ static void *thread_repeating(void *arg)
 
 static void *thread_async(void *arg)
 {
-	sbar_comp_t *c = (sbar_comp_t *)arg;
+	Component *c = (Component *)arg;
 	sigset_t sigset;
 	int sig, r;
 
@@ -197,15 +196,15 @@ static void *thread_async(void *arg)
 
 static void *thread_once(void *arg)
 {
-	const sbar_comp_t *c = (sbar_comp_t *)arg;
+	const Component *c = (Component *)arg;
 	sbar_comp_update(c);
 	return NULL;
 }
 
-static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
-			const sbar_comp_defn_t *comp_defns)
+static void sbar_create(StatusBar *sbar, const uint8_t ncomponents,
+			const ComponentDefn *comp_defns)
 {
-	sbar_comp_t *cp;
+	Component *cp;
 	sigset_t sigset;
 	int r;
 
@@ -214,7 +213,7 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 		fatal(errno);
 	}
 	sbar->ncomponents = ncomponents;
-	sbar->components = calloc(ncomponents, sizeof(sbar_comp_t));
+	sbar->components = calloc(ncomponents, sizeof(Component));
 	if (sbar->components == NULL) {
 		fatal(errno);
 	}
@@ -264,11 +263,11 @@ static void sbar_create(sbar_t *sbar, const uint8_t ncomponents,
 	assert(!r);
 }
 
-static void sbar_start(sbar_t *sbar)
+static void sbar_start(StatusBar *sbar)
 {
 	pthread_attr_t attr;
 	pthread_t tid;
-	sbar_comp_t *c;
+	Component *c;
 	int r;
 
 	r = pthread_attr_init(&attr);
@@ -311,7 +310,7 @@ static void usage(FILE *f)
 
 int main(int argc, char *argv[])
 {
-	sbar_t sbar;
+	StatusBar sbar;
 
 	int option;
 	while ((option = getopt(argc, argv, "hs")) != -1) {

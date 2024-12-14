@@ -25,8 +25,8 @@
 
 #define BUF_SIZE 128
 
-typedef bool (*parser_t)(char *, const size_t, char *, const size_t,
-			 const char *);
+typedef bool (*Parser)(char *, const size_t, char *, const size_t,
+		       const char *);
 
 static pthread_mutex_t cpu_data_mtx = PTHREAD_MUTEX_INITIALIZER,
 		       net_traffic_mtx = PTHREAD_MUTEX_INITIALIZER;
@@ -126,7 +126,7 @@ static bool parse_wireless(char *out, const size_t outsize, char *data,
 }
 
 static bool parse_file(char *buf, const size_t bufsize, char *file,
-		       const char *target, parser_t parse)
+		       const char *target, Parser parse)
 {
 	bool ret = false;
 

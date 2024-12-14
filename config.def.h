@@ -8,7 +8,7 @@ static const char no_val_str[] = "???";
 const char err_str[] = "err";
 
 /* clang-format off */
-static const sbar_comp_defn_t component_defns[] = {
+static const ComponentDefn component_defns[] = {
 	/* function,		args,	  interval,    signal (SIGRTMIN+n) */
 	{ comp_keyb_ind,	0,		-1,	 	 0 },
 	{ comp_net_traffic,	"wlan0",	 1,		-1 },
