@@ -36,6 +36,7 @@ static void render_component(char *buf, const size_t bufsize, const char *fmt,
 {
 	va_list ap;
 	va_start(ap, fmt);
+
 	int n = vsnprintf(buf, bufsize, fmt, ap);
 	va_end(ap);
 	assert(n >= 0 && (size_t)n < bufsize);
@@ -71,122 +72,37 @@ static bool parse_net_stats(char *buf, const size_t bufsize, uint64_t *val,
 	return true;
 }
 
-static bool parse_val(char *data, size_t datasz, const char *target,
-		      unsigned nfield, long *result)
+static bool get_wifi_essid(char *buffer, const char *interface)
 {
-	data[datasz - 1] = '\0';
+	bool return_val = false;
 
-	char *s = strstr(data, target);
-	if (!s)
-		return false;
-	unsigned i;
-	char *token = NULL;
-	char *p, *saveptr;
-	for (i = 0, p = s; i < nfield; i++, p = NULL) {
-		token = strtok_r(p, " ", &saveptr);
-		if (!token)
-			return false;
-	}
-	if (!token)
-		return false;
-	errno = 0;
-	*result = strtol(token, NULL, 0);
-	if (errno) {
-		log_errno(errno, "Error converting '%s'", token);
-		return false;
-	}
-	return true;
-}
-
-static bool parse_meminfo(char *out, const size_t outsize, char *data,
-			  const size_t datasz, const char *target)
-{
-	long val;
-	bool s = parse_val(data, datasz, target, 2, &val);
-	if (!s) {
-		log_err("Unable to parse available memory");
-		return false;
-	}
-	util_fmt_human(out, outsize, val * K_IEC, K_IEC);
-	return true;
-}
-
-static bool parse_wireless(char *out, const size_t outsize, char *data,
-			   const size_t datasz, const char *target)
-{
-	long val;
-	bool s = parse_val(data, datasz, target, 3, &val);
-	if (!s) {
-		log_err("Unable to parse wifi strength");
-		return false;
-	}
-
-	render_component(out, outsize, "%ld", (val * 100 / MAX_WIFI_QUALITY));
-	return true;
-}
-
-static bool parse_file(char *buf, const size_t bufsize, char *file,
-		       const char *target, Parser parse)
-{
-	bool ret = false;
-
-	FILE *f = fopen(file, "r");
-	if (!f) {
-		log_errno(errno, "Error: unable to open '%s'", file);
-		goto out;
-	}
-	char *data = NULL;
-	size_t len;
-	errno = 0;
-	ssize_t nread = getdelim(&data, &len, '\0', f);
-	if (nread == -1) {
-		log_errno(errno, "Error reading '%s'", file);
-		goto cleanup;
-	}
-	bool s = parse(buf, bufsize, data, nread, target);
-	if (!s) {
-		goto cleanup;
-	}
-	ret = true;
-
-cleanup:
-	free(data);
-	(void)fclose(f);
-out:
-	return ret;
-}
-
-static bool wifi_essid(char *buf, const char *iface)
-{
-	bool ret = false;
-
-	assert(iface);
-	size_t len = strlen(iface);
+	assert(interface);
+	size_t len = strlen(interface);
 	assert(len < IFNAMSIZ);
 
 	struct iwreq iwreq = { 0 };
 	iwreq.u.essid.length = IW_ESSID_MAX_SIZE + 1;
-	memcpy(iwreq.ifr_name, iface, len);
+	memcpy(iwreq.ifr_name, interface, len);
 
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1) {
 		log_errno(errno, "Error creating socket: %s");
 		goto out;
 	}
-	iwreq.u.essid.pointer = buf;
+	iwreq.u.essid.pointer = buffer;
 	if (ioctl(sockfd, SIOCGIWESSID, &iwreq) == -1) {
 		log_errno(errno, "Error reading socket: %s");
 		goto cleanup;
 	}
-	ret = true;
+	return_val = true;
 
 cleanup:
 	close(sockfd);
 out:
-	return ret;
+	return return_val;
 }
 
-void comp_keyb_ind(char *buf, const size_t bufsize, const char *args)
+void comp_keyboard_indicator(char *buf, const size_t bufsize, const char *args)
 {
 	if (dpy) {
 		XKeyboardState state;
@@ -265,17 +181,35 @@ err_ret:
 	render_component(buf, bufsize, " %s", err_str);
 }
 
-void comp_mem_avail(char *buf, const size_t bufsize, const char *args)
+void comp_memory_available(char *buffer, const size_t buffer_size,
+			   const char *args)
 {
-	char value[BUF_SIZE];
-	bool s = parse_file(value, sizeof(value), "/proc/meminfo",
-			    "MemAvailable", parse_meminfo);
-	if (!s) {
-		log_err("Unable to determine available memory");
-		render_component(buf, bufsize, " %s", err_str);
+	const char *file = "/proc/meminfo", *label = "MemAvailable";
+	char *line_buffer = NULL;
+	size_t line_buffer_len = 0;
+	char unformatted[64], formatted[64];
+	unsigned long value;
+
+	if (!util_file_get_line(&line_buffer, &line_buffer_len, label, file)) {
+		log_err("Couldn't find line containing '%s' in file %s", label,
+			file);
+		render_component(buffer, buffer_size, " %s", err_str);
 		return;
 	}
-	render_component(buf, bufsize, " %s%s", value, "B");
+
+	if (!util_string_get_nth_field(unformatted, LEN(unformatted),
+				       line_buffer, 2)) {
+		log_err("Couldn't find field 2 in line '%s'", line_buffer);
+		free(line_buffer);
+		render_component(buffer, buffer_size, " %s", err_str);
+		return;
+	}
+
+	free(line_buffer);
+
+	value = strtoul(unformatted, NULL, 0);
+	util_fmt_human(formatted, LEN(formatted), value * K_IEC, K_IEC);
+	render_component(buffer, buffer_size, " %s%s", formatted, "B");
 }
 
 void comp_net_traffic(char *buf, const size_t bufsize, const char *iface)
@@ -316,20 +250,39 @@ err_ret:
 	render_component(buf, bufsize, "%s▾ %s▴", err_str, err_str);
 }
 
-void comp_wifi(char *buf, const size_t bufsize, const char *device)
+void comp_wifi(char *buffer, const size_t buffer_size, const char *device)
 {
+	const char *file = "/proc/net/wireless";
+	char *line_buffer = NULL;
+	size_t line_buffer_len = 0;
+	char unformatted[64], formatted[64];
 	char essid[IW_ESSID_MAX_SIZE + 1];
-	wifi_essid(essid, device);
+	unsigned long value;
 
-	char value[BUF_SIZE];
-	bool s = parse_file(value, sizeof(value), "/proc/net/wireless", device,
-			    parse_wireless);
-	if (!s) {
-		log_err("Unable to determine wifi strength");
-		render_component(buf, bufsize, " %s", err_str);
+	if (!util_file_get_line(&line_buffer, &line_buffer_len, device, file)) {
+		log_err("Couldn't find line containing '%s' in file %s", device,
+			file);
+		render_component(buffer, buffer_size, " %s", err_str);
 		return;
 	}
-	render_component(buf, bufsize, " %s%% %s", value, essid);
+
+	if (!util_string_get_nth_field(unformatted, LEN(unformatted),
+				       line_buffer, 3)) {
+		log_err("Couldn't find field 3 in line '%s'", line_buffer);
+		free(line_buffer);
+		render_component(buffer, buffer_size, " %s", err_str);
+		return;
+	}
+
+	free(line_buffer);
+
+	value = strtoul(unformatted, NULL, 0);
+	(void)snprintf(formatted, LEN(formatted), "%ld",
+		       value * 100 / MAX_WIFI_QUALITY);
+
+	get_wifi_essid(essid, device);
+
+	render_component(buffer, buffer_size, " %s%% %s", formatted, essid);
 }
 
 void comp_disk_free(char *buf, const size_t bufsize, const char *path)
@@ -339,13 +292,13 @@ void comp_disk_free(char *buf, const size_t bufsize, const char *path)
 	if (r == -1) {
 		log_errno(errno, "Error: statvfs: %s");
 		log_err("Unable to determine disk free space");
-		render_component(buf, bufsize, "󰋊%s", err_str);
+		render_component(buf, bufsize, "󰋊 %s", err_str);
 		return;
 	}
 	char output[bufsize];
 	util_fmt_human(output, sizeof(output), fs.f_frsize * fs.f_bavail,
 		       K_IEC);
-	render_component(buf, bufsize, "󰋊%sB", output);
+	render_component(buf, bufsize, "󰋊 %sB", output);
 }
 
 void comp_volume(char *buf, const size_t bufsize, const char *path)

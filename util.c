@@ -9,6 +9,57 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+bool util_file_get_line(char **buffer, size_t *restrict buffer_len,
+			const char *restrict target, const char *restrict path)
+{
+	FILE *restrict file;
+	bool return_val = false;
+
+	file = fopen(path, "r");
+	if (!file) {
+		char msg[64];
+		sprintf(msg, "Error: unable to open '%s'", path);
+		perror(msg);
+		return false;
+	}
+
+	while (getline(buffer, buffer_len, file) != -1) {
+		*(strchrnul(*buffer, '\n')) = 0;  // remove trailing newline
+		if (strstr(*buffer, target) != NULL) {
+			return_val = true;
+			break;
+		}
+	}
+
+	fclose(file);
+	return return_val;
+}
+
+bool util_string_get_nth_field(char *buffer, size_t buffer_size, char *string,
+			       const int n)
+{
+	char *token;
+	size_t token_len;
+	int count = 1;
+	char *saveptr;
+
+	if (!string || n <= 0)
+		return NULL;
+
+	token = strtok_r(string, " ", &saveptr);
+	while (token != NULL && count < n) {
+		token = strtok_r(NULL, " ", &saveptr);
+		count++;
+	}
+	if (count < n)
+		return false;
+
+	token_len = strlen(token);
+	assert(buffer_size >= token_len + 1);
+	memmove(buffer, token, token_len + 1);
+	return true;
+}
+
 char *util_cat(char *dest, const char *end, const char *str)
 {
 	while (dest < end && *str)
@@ -64,16 +115,19 @@ bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 {
 	assert(argv[0] && "argv[0] must not be NULL");
 
+	int ret, status;
+	pid_t pid;
+	ssize_t nread;
+	char argv_s[bufsize];
 	int pipefd[2];
-	int r = pipe(pipefd);
-	if (r == -1) {
+
+	ret = pipe(pipefd);
+	if (ret == -1) {
 		log_errno(errno, "Error creating pipe");
 		return false;
 	}
 
-	ssize_t nread;
-	int s, status;
-	pid_t pid = fork();
+	pid = fork();
 	switch (pid) {
 	case -1:
 		log_errno(errno, "Error: unable to fork");
@@ -81,17 +135,22 @@ bool util_run_cmd(char *buf, const size_t bufsize, char *const argv[])
 		close(pipefd[1]);
 		return false;
 	case 0:
-		s = dup2(pipefd[1], 1);
-		assert(s != -1);
+		ret = dup2(pipefd[1], 1);
+		if (ret < 0) {
+			log_errno(errno,
+				  "Error: unable to dup2 in child process");
+			_exit(EXIT_FAILURE);
+		}
 		execvp(argv[0], argv);
 		_exit(EXIT_FAILURE);  // Failed exec
 	default:
 		nread = read(pipefd[0], buf, bufsize);
 		assert(nread != -1);
 		buf[nread - 1] = '\0';	// Remove trailing newline
-		s = waitpid(pid, &status, 0);
-		assert(s != -1);
-		char argv_s[bufsize];
+		ret = waitpid(pid, &status, 0);
+		assert(ret != -1);
+		close(pipefd[0]);
+		close(pipefd[1]);
 		argv_str(argv_s, sizeof(argv_s), argv);
 		if (!WIFEXITED(status)) {
 			log_err("Error: command terminated abnormally: '%s'",
