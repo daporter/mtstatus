@@ -18,7 +18,7 @@ static const ComponentDefn component_defns[] = {
 	{ comp_volume,			0,		60,	 	 2 },
 	{ comp_wifi,			"wlan0",	 5,		-1 },
 	{ comp_battery,			0,		 2,		-1 },
-	{ comp_datetime,		"%a %d %b %R",	30,		-1 },
+	{ comp_datetime,		"%a %e %b %R",	30,		-1 },
 };
 /* clang-format on */
 
